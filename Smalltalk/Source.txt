@@ -1,0 +1,2 @@
+Downloaded from https://github.com/SOM-st/SOM on 2020-08-08.
+Commit 47805b6
