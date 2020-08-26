@@ -35,7 +35,7 @@ public:
                      Colon, Hat, Hash, Assig, Tilde, At, Percent, Ampers, Star, Minus, Plus,
                      Eq, Bar, Bslash, Lt, Gt, Comma, Qmark, Slash, Dot, Semi,
                      Lpar, Rpar, Lbrack, Rbrack,
-                     String, Char, Ident, Number, Comment, LCmt, LStr, Symbol, BinSelector, Separator  };
+                     String, Char, Ident, Integer, Real, Comment, LCmt, LStr, Symbol, BinSelector, Separator, Keyword  };
 
     static const char* s_typeName[];
 

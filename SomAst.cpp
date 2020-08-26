@@ -18,6 +18,8 @@
 */
 
 #include "SomAst.h"
+#include <QtDebug>
+#include <QTextStream>
 using namespace Som;
 using namespace Som::Ast;
 
@@ -33,10 +35,15 @@ Ast::Method*Ast::Class::findMethod(const QByteArray& name) const
 
 Variable*Class::findVar(const QByteArray& name) const
 {
-    for( int i = 0; i < d_vars.size(); i++ )
+    for( int i = 0; i < d_instVars.size(); i++ )
     {
-        if( d_vars[i]->d_name.constData() == name.constData() )
-            return d_vars[i].data();
+        if( d_instVars[i]->d_name.constData() == name.constData() )
+            return d_instVars[i].data();
+    }
+    for( int i = 0; i < d_classVars.size(); i++ )
+    {
+        if( d_classVars[i]->d_name.constData() == name.constData() )
+            return d_classVars[i].data();
     }
     return 0;
 }
@@ -63,7 +70,12 @@ void Class::addVar(Variable* v)
 {
 //    if( findVar(v->d_name ) )
 //        qWarning() << "duplicate variable name" << v->d_name << "in class" << d_name;
-    d_vars.append(v);
+    if( v->d_kind == Variable::InstanceLevel )
+        d_instVars.append(v);
+    else if( v->d_kind == Variable::ClassLevel )
+        d_classVars.append(v);
+    else
+        Q_ASSERT( false );
     v->d_owner = this;
     d_varNames[v->d_name.constData()].append(v);
 }
@@ -78,7 +90,7 @@ QByteArray Method::prettyName(const QByteArrayList& pattern, quint8 kind , bool 
         case BinaryPattern:
             return pattern.first();
         case KeywordPattern:
-            return pattern.join(withSpace ? ": " : ":" ) + ':';
+            return pattern.join(withSpace ? " " : "" );
         }
     }
     return QByteArray();
@@ -111,7 +123,7 @@ Class*Scope::getClass() const
 
 Expression* Method::findByPos(quint32 pos) const
 {
-    struct Locator : public AstVisitor
+    struct Locator : public Visitor
     {
         quint32 d_pos;
         bool inline isHit( Thing* t )
@@ -226,7 +238,7 @@ Method* Scope::getMethod() const
         return 0;
 }
 
-Block::Block()
+Block::Block():d_syntaxLevel(0),d_inline(false),d_inlinedLevel(0)
 {
     d_func = new Function();
 }
@@ -254,4 +266,213 @@ QList<Named*> Scope::findMeths(const QByteArray& name, bool recursive) const
     if( res.isEmpty() && recursive && d_owner )
         res = d_owner->findMeths(name, recursive);
     return res;
+}
+
+void Thing::dump(QTextStream& out)
+{
+    struct V : public Visitor
+    {
+        QTextStream& out;
+        int level;
+        V(QTextStream& o):out(o),level(0){}
+
+        inline QByteArray ws()
+        {
+            //return QByteArray(level,'\t');
+            QByteArray str;
+            for( int i = 0; i < level - 1; i++ )
+                str += "\t|";
+            if( level > 0 )
+                str += "\t";
+            return str;
+        }
+
+        inline void printParen( Thing* t )
+        {
+            t->accept(this);
+        }
+
+        virtual void visit( Return* r )
+        {
+            out << "RET: ";
+            level++;
+            r->d_what->accept(this);
+            level--;
+        }
+        virtual void visit( ArrayLiteral* a)
+        {
+            out << "ARR( ";
+            level++;
+            for( int i = 0; i < a->d_elements.size(); i++ )
+            {
+                out << endl << ws();
+                printParen( a->d_elements[i].data() );
+            }
+            level--;
+            out << " )ARR";
+        }
+        virtual void visit( Variable* v )
+        {
+            switch( v->d_kind )
+            {
+            case Variable::InstanceLevel:
+                out << "FLD: ";
+                break;
+            case Variable::ClassLevel:
+                out << "C_FLD: ";
+                break;
+            case Variable::Argument:
+                out << "PAR: ";
+                break;
+            case Variable::Temporary:
+                out << "LOC: ";
+                break;
+            case Variable::Global:
+                out << "GLB: ";
+                break;
+            }
+            out << v->d_name;
+        }
+        virtual void visit( Class* c )
+        {
+            out << "CLS: " << c->d_name << " -> " << c->d_superName;
+            level++;
+            for( int i = 0; i < c->d_instVars.size(); i++ )
+            {
+                out << endl << ws();
+                c->d_instVars[i]->accept(this);
+            }
+            for( int i = 0; i < c->d_classVars.size(); i++ )
+            {
+                out << endl << ws();
+                c->d_classVars[i]->accept(this);
+            }
+            for( int i = 0; i < c->d_methods.size(); i++ )
+            {
+                out << endl << ws();
+                c->d_methods[i]->accept(this);
+            }
+            level--;
+        }
+        virtual void visit( Method* m)
+        {
+            if( m->d_classLevel )
+                out << "C_";
+            if( m->d_primitive )
+                out << "PRIM";
+            else
+                out << "METH";
+            out << ": \"" << m->d_name << "\"";
+            level++;
+            for( int i = 0; i < m->d_vars.size(); i++ )
+            {
+                out << endl << ws();
+                m->d_vars[i]->accept(this);
+            }
+            for( int i = 0; i < m->d_body.size(); i++ )
+            {
+                out << endl << ws();
+                m->d_body[i]->accept(this);
+            }
+            level--;
+        }
+        virtual void visit( Block* b )
+        {
+            out << "BLCK: ";
+            level++;
+            for( int i = 0; i < b->d_func->d_vars.size(); i++ )
+            {
+                out << endl << ws();
+                b->d_func->d_vars[i]->accept(this);
+            }
+            for( int i = 0; i < b->d_func->d_body.size(); i++ )
+            {
+                out << endl << ws();
+                b->d_func->d_body[i]->accept(this);
+            }
+            level--;
+        }
+        virtual void visit( MsgSend* ms)
+        {
+            out << "SND:";
+            level++;
+            out << endl << ws() << "TO: ";
+            level++;
+            printParen(ms->d_receiver.data());
+            level--;
+            out << endl << ws() << "MSG: \"" << ms->prettyName(false) << "\" ";
+            for( int i = 0; i < ms->d_args.size(); i++ )
+            {
+                out << endl << ws();
+                printParen(ms->d_args[i].data());
+            }
+            level--;
+        }
+        virtual void visit( Cascade* c )
+        {
+            Q_ASSERT( false ); // SOM apparently doesn't use cascades
+            Q_ASSERT( !c->d_calls.isEmpty() );
+            out << "MSND:";
+            level++;
+            out << endl << ws() << "TO: ";
+            printParen(c->d_calls.first()->d_receiver.data());
+            level++;
+            for( int j = 0; j < c->d_calls.size(); j++ )
+            {
+                out << endl << ws() << "MSG: \"" << c->d_calls[j]->prettyName(false) << "\" ";
+                for( int i = 0; i < c->d_calls[j]->d_args.size(); i++ )
+                {
+                    out << endl << ws();
+                    printParen(c->d_calls[j]->d_args[i].data());
+                }
+            }
+            level--;
+            level--;
+        }
+        virtual void visit( Assig* a)
+        {
+            Q_ASSERT( a->d_lhs.size() == 1 );
+            out << "ASS: ";
+            level++;
+            out << endl << ws() << "LHS: ";
+            a->d_lhs.first()->accept(this);
+            out << endl << ws() << "RHS: ";
+            a->d_rhs->accept(this);
+            level--;
+        }
+        virtual void visit( Char* c )
+        {
+            if( ::isprint(c->d_ch) )
+                out << "'" << c->d_ch << "'";
+            else
+                out << "0x" << QByteArray::number(c->d_ch,16);
+        }
+        virtual void visit( String* s)
+        {
+            out << "\"" << s->d_str.simplified() << "\"";
+        }
+        virtual void visit( Number* n )
+        {
+            out << n->d_num;
+        }
+        virtual void visit( Symbol* s)
+        {
+            out << "#" << s->d_sym;
+        }
+        virtual void visit( Ident* i )
+        {
+            if( i->d_resolved )
+                out << i->d_ident << " (resolved " << i->d_resolved->getTag() << ")";
+            else if( i->d_keyword )
+                out << i->d_ident;
+            else
+                out << i->d_ident << " (unresolved)";
+        }
+        virtual void visit( Selector* )
+        {
+            Q_ASSERT( false );
+        }
+    };
+    V v(out);
+    accept(&v);
 }

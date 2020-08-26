@@ -339,13 +339,17 @@ ClassBrowser::~ClassBrowser()
 
 }
 
-static QStringList collectFiles( const QDir& dir )
+static QStringList collectFiles( const QDir& dir, bool recursive = false )
 {
     QStringList res;
-    QStringList files = dir.entryList( QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name );
+    QStringList files;
 
-    foreach( const QString& f, files )
-        res += collectFiles( QDir( dir.absoluteFilePath(f) ) );
+    if( recursive )
+    {
+        files = dir.entryList( QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name );
+        foreach( const QString& f, files )
+            res += collectFiles( QDir( dir.absoluteFilePath(f) ), recursive );
+    }
 
     files = dir.entryList( QStringList() << QString("*.som"), QDir::Files, QDir::Name );
     foreach( const QString& f, files )
@@ -361,15 +365,17 @@ bool ClassBrowser::parse(const QString& path)
     QStringList paths;
 
 #if 1
-    paths = collectFiles(dir);
+    paths = collectFiles(dir, true);
 
     QFileInfo info(path);
     if( info.isDir() )
+    {
         dir = path;
-    else
-        dir = info.absoluteDir();
+        paths += collectFiles(dir, false);
+        qDebug() << "parsing" << paths.size() << "files";
+    }else
+        paths += path;
 
-    paths += collectFiles(dir);
 #else
     paths += path; // TEST
 #endif
@@ -503,18 +509,20 @@ static QString fieldList( Ast::Class* c, int& nr, bool instance )
     Ast::Class* super = c->getSuper();
     if( super )
         res = fieldList(super, nr,instance);
-    QString vars;
-    for( int i = 0; i < c->d_vars.size(); i++ )
+    QString varStr;
+    QList< Ast::Ref<Ast::Variable> > vars = c->d_instVars;
+    vars += c->d_classVars;
+    for( int i = 0; i < vars.size(); i++ )
     {
-        if( ( instance && c->d_vars[i]->d_kind == Ast::Variable::InstanceLevel )
-                || ( !instance && c->d_vars[i]->d_kind == Ast::Variable::ClassLevel ) )
-            vars += QString("<br>%1 %2").arg(nr++).arg(c->d_vars[i]->d_name.constData());
+        if( ( instance && vars[i]->d_kind == Ast::Variable::InstanceLevel )
+                || ( !instance && vars[i]->d_kind == Ast::Variable::ClassLevel ) )
+            varStr += QString("<br>%1 %2").arg(nr++).arg(vars[i]->d_name.constData());
     }
-    if( !vars.isEmpty() )
+    if( !varStr.isEmpty() )
     {
         if( !res.isEmpty() )
             res += "<br>\n";
-        res += QString("<u>%1</u>").arg(c->d_name.constData()) + vars;
+        res += QString("<u>%1</u>").arg(c->d_name.constData()) + varStr;
     }
 
     return res;
@@ -538,7 +546,7 @@ void ClassBrowser::fillMembers()
 
     d_classInfo->setHtml( getClassSummary(d_curClass.data(), false) );
 
-    if( !d_curClass->d_vars.isEmpty() )
+    if( !d_curClass->d_instVars.isEmpty() )
     {
         QTreeWidgetItem* fields = new QTreeWidgetItem(d_members);
         fields->setFont(0,bold);
@@ -548,20 +556,20 @@ void ClassBrowser::fillMembers()
         nr = 1;
         varlist += "<h3>Class:</h3>\n" + fieldList( d_curClass.data(), nr, false );
         fields->setToolTip(0, varlist );
-        for( int i = 0; i < d_curClass->d_vars.size(); i++ )
+        for( int i = 0; i < d_curClass->d_instVars.size(); i++ )
         {
             QTreeWidgetItem* sub1 = new QTreeWidgetItem(fields);
-            sub1->setText(0, ( d_curClass->d_vars[i]->d_kind == Ast::Variable::ClassLevel ? "[c] " : "" )
-                          + d_curClass->d_vars[i]->d_name );
-            sub1->setData(0,Qt::UserRole, QVariant::fromValue(d_curClass->d_vars[i]));
+            sub1->setText(0, ( d_curClass->d_instVars[i]->d_kind == Ast::Variable::ClassLevel ? "[c] " : "" )
+                          + d_curClass->d_instVars[i]->d_name );
+            sub1->setData(0,Qt::UserRole, QVariant::fromValue(d_curClass->d_instVars[i]));
         }
     }
 
-    typedef QMap<QByteArray,QMap<QByteArray,Ast::Method*> > Cats;
+    typedef QMap<QByteArray,QMultiMap<QByteArray,Ast::Method*> > Cats;
     Cats cats;
 
     for( int i = 0; i < d_curClass->d_methods.size(); i++ )
-        cats[d_curClass->d_methods[i]->d_category][d_curClass->d_methods[i]->prettyName()] = d_curClass->d_methods[i].data();
+        cats[d_curClass->d_methods[i]->d_category].insert(d_curClass->d_methods[i]->prettyName(), d_curClass->d_methods[i].data() );
 
     Cats::const_iterator j;
     for( j = cats.begin(); j != cats.end(); ++ j )
@@ -632,7 +640,7 @@ QString ClassBrowser::getClassSummary(Ast::Class* c, bool elided)
                            "<p>%4</p><p>%5</p></html>")
                      .arg(c->d_name.constData()).arg(c->d_category.constData())
                      .arg(c->d_superName.constData() ).arg( cmt2 ).arg( cmt1 )
-            .arg(c->d_vars.size()).arg(c->d_methods.size()).arg(c->d_subs.size());
+            .arg(c->d_instVars.size()).arg(c->d_methods.size()).arg(c->d_subs.size());
 }
 
 void ClassBrowser::createMethod()
@@ -1231,7 +1239,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Som");
     a.setApplicationName("SOM Class Browser");
-    a.setApplicationVersion("0.1");
+    a.setApplicationVersion("0.2");
     a.setStyle("Fusion");
 
     ClassBrowser w;

@@ -27,7 +27,7 @@ using namespace Som::Ast;
 
 // Adapted from Smalltalk StParser.cpp/h
 
-Parser::Parser(Lexer* l):d_lex(l)
+Parser::Parser(Lexer* l):d_lex(l),d_blockLevel(0)
 {
     primitive = Lexer::getSymbol("primitive");
     Object = Lexer::getSymbol("Object");
@@ -133,7 +133,7 @@ bool Parser::readClassExpr()
         parseFields(false);
 
     t = d_lex->peek();
-    while( t.d_type == Lexer::Ident || isBinaryChar(t) || t.d_type == Lexer::BinSelector )
+    while( t.d_type == Lexer::Ident || t.d_type == Lexer::Keyword || isBinaryChar(t) || t.d_type == Lexer::BinSelector )
     {
         Ast::Ref<Ast::Method> m = readMethod( d_curClass.data(),false);
         if( m.isNull() )
@@ -150,7 +150,7 @@ bool Parser::readClassExpr()
             parseFields(true);
 
         t = d_lex->peek();
-        while( t.d_type == Lexer::Ident || isBinaryChar(t) || t.d_type == Lexer::BinSelector )
+        while( t.d_type == Lexer::Ident || t.d_type == Lexer::Keyword || isBinaryChar(t) || t.d_type == Lexer::BinSelector )
         {
             Ast::Ref<Ast::Method> m = readMethod( d_curClass.data(),true);
             if( m.isNull() )
@@ -168,7 +168,8 @@ bool Parser::readClassExpr()
 Ast::Ref<Method> Parser::readMethod(Class* c, bool classLevel )
 {
     Lexer::Token t = d_lex->next();
-    Q_ASSERT( t.d_type == Lexer::Ident || isBinaryChar(t) || t.d_type == Lexer::BinSelector );
+    const Lexer::Token t0 = t;
+    Q_ASSERT( t.d_type == Lexer::Ident || t.d_type == Lexer::Keyword || isBinaryChar(t) || t.d_type == Lexer::BinSelector );
 
     Ref<Method> m = new Method();
     m->d_loc = t.d_loc;
@@ -194,8 +195,7 @@ Ast::Ref<Method> Parser::readMethod(Class* c, bool classLevel )
     if( isBinaryChar(toks.first()) || toks.first().d_type == Lexer::BinSelector )
     {
         // binarySelector
-        QByteArray str = toks[curTokIdx++].d_val;
-        m->d_pattern << str;
+        m->d_pattern << toks[curTokIdx++].d_val;
         if( curTokIdx >= toks.size() || !toks[curTokIdx].d_type == Lexer::Ident )
             error("invalid message header",toks.first());
         else
@@ -208,30 +208,27 @@ Ast::Ref<Method> Parser::readMethod(Class* c, bool classLevel )
             curTokIdx++;
         }
         m->d_patternType = Ast::BinaryPattern;
+    }else if( toks.first().d_type == Lexer::Keyword )
+    {
+        // Keyword selector
+        m->d_patternType = Ast::KeywordPattern;
+        while( ( toks.size() - curTokIdx >= 2 ) && ( toks[curTokIdx].d_type == Lexer::Keyword ) &&
+               ( toks[curTokIdx+1].d_type == Lexer::Ident ) )
+        {
+            m->d_pattern += toks[curTokIdx].d_val;
+            Ref<Variable> l = new Variable();
+            l->d_kind = Variable::Argument;
+            l->d_loc = toks[curTokIdx+1].d_loc;
+            l->d_name = toks[curTokIdx+1].d_val;
+            m->addVar( l.data() );
+            curTokIdx += 2;
+        }
     }else if( toks.first().d_type == Lexer::Ident )
     {
-        if( toks.size() > 1 && toks[1].d_type == Lexer::Colon )
-        {
-            // Keyword selector
-            m->d_patternType = Ast::KeywordPattern;
-            while( toks.size() - curTokIdx >= 3 && toks[curTokIdx].d_type == Lexer::Ident &&
-                   toks[curTokIdx+1].d_type == Lexer::Colon && toks[curTokIdx+2].d_type == Lexer::Ident )
-            {
-                m->d_pattern += toks[curTokIdx].d_val;
-                Ref<Variable> l = new Variable();
-                l->d_kind = Variable::Argument;
-                l->d_loc = toks[curTokIdx+2].d_loc;
-                l->d_name = toks[curTokIdx+2].d_val;
-                m->addVar( l.data() );
-                curTokIdx += 3;
-            }
-        }else
-        {
-            // unary selector
-            curTokIdx++;
-            m->d_pattern << toks.first().d_val;
-            m->d_patternType = Ast::UnaryPattern;
-        }
+        // unary selector
+        curTokIdx++;
+        m->d_pattern << toks.first().d_val;
+        m->d_patternType = Ast::UnaryPattern;
     }else
     {
         Q_ASSERT( false );
@@ -242,7 +239,14 @@ Ast::Ref<Method> Parser::readMethod(Class* c, bool classLevel )
 
 
     m->d_classLevel = classLevel;
-    c->addMethod(m.data());
+
+    Method* other = c->findMethod(m->d_name);
+    if( other && other->d_classLevel == m->d_classLevel )
+        // apparently both parts of a class (north & south of the separator) can have methods with the same name
+        // happens e.g. in Benchmarks/Random.som
+        error( "duplicate method name", t0 );
+    else
+        c->addMethod(m.data());
 
     TokStream ts;
 
@@ -283,18 +287,19 @@ Ast::Ref<Method> Parser::readMethod(Class* c, bool classLevel )
         return 0;
     }
 
-    parseMethodBody( m.data(), ts );
+    d_curMeth = m;
+    parseMethodBody( ts );
 
     return m;
 }
 
-bool Parser::parseMethodBody(Method* m, TokStream& ts)
+bool Parser::parseMethodBody(TokStream& ts)
 {
     Lexer::Token t = ts.peek();
     if( t.d_type == Lexer::Bar )
     {
         // declare locals
-        parseLocals( m, ts );
+        parseLocals( d_curMeth.data(), ts );
         t = ts.peek();
     }
     while( !ts.atEnd() && t.isValid() )
@@ -306,21 +311,22 @@ bool Parser::parseMethodBody(Method* m, TokStream& ts)
         case Lexer::Symbol:
         case Lexer::Lpar:
         case Lexer::Lbrack:
-        case Lexer::Number:
+        case Lexer::Real:
+        case Lexer::Integer:
         case Lexer::String:
         case Lexer::Char:
         case Lexer::Minus:
             {
-                Ref<Expression> e = parseExpression(m,ts);
+                Ref<Expression> e = parseExpression(d_curMeth.data(),ts);
                 if( !e.isNull() )
-                    m->d_body.append(e);
+                    d_curMeth->d_body.append(e);
             }
             break;
         case Lexer::Hat:
             {
-                Ref<Expression> e = parseReturn(m,ts);
+                Ref<Expression> e = parseReturn(d_curMeth.data(),ts);
                 if( !e.isNull() )
-                    m->d_body.append(e);
+                    d_curMeth->d_body.append(e);
             }
             break;
         case Lexer::Dot:
@@ -382,10 +388,10 @@ Ref<Expression> Parser::parseExpression(Ast::Function* scope,Parser::TokStream& 
     case Lexer::Minus:
         ts.next(); // eat '-'
         t = ts.peek();
-        if( t.d_type == Lexer::Number )
+        if( t.d_type == Lexer::Real || t.d_type == Lexer::Integer )
         {
             t.d_val = "-" + t.d_val;
-            lhs = new Number( t.d_val, t.d_loc );
+            lhs = new Number( t.d_val, t.d_type == Lexer::Real, t.d_loc );
             ts.next();
         }else
         {
@@ -393,8 +399,9 @@ Ref<Expression> Parser::parseExpression(Ast::Function* scope,Parser::TokStream& 
             return lhs.data();
         }
         break;
-    case Lexer::Number:
-        lhs = new Number( t.d_val, t.d_loc );
+    case Lexer::Real:
+    case Lexer::Integer:
+        lhs = new Number( t.d_val, t.d_type == Lexer::Real, t.d_loc );
         ts.next();
         break;
     case Lexer::String:
@@ -444,105 +451,61 @@ Ref<Expression> Parser::parseExpression(Ast::Function* scope,Parser::TokStream& 
 
     Q_ASSERT( !lhs.isNull() );
 
-    Ref<Cascade> casc;
-
-    while( t.isValid() && ( isBinaryChar(t) || t.d_type == Lexer::Ident || t.d_type == Lexer::BinSelector ) )
+    while( t.isValid() && ( isBinaryChar(t) || t.d_type == Lexer::Keyword ||
+                            t.d_type == Lexer::Ident || t.d_type == Lexer::BinSelector ) )
     {
-        Ref<MsgSend> c;
-        if( isBinaryChar(t) || t.d_type == Lexer::BinSelector )
+        if( t.d_type == Lexer::Ident )
         {
-            // binarySelector
-            c = new MsgSend();
+            // unary selector
+            ts.next(); // eat current token
+            Ref<MsgSend> c = new MsgSend();
             c->d_loc = lhs->d_loc;
             c->d_inMethod = scope->getMethod();
-            QByteArray str;
-            const Loc pos = t.d_loc;
-            str.append(ts.next().d_val);
-            c->d_pattern << qMakePair(str,pos);
-            Ref<Expression> e = parseExpression(scope,ts,false);
+            c->d_pattern << qMakePair(t.d_val,t.d_loc);
+            c->d_patternType = Ast::UnaryPattern;
+            c->d_receiver = lhs;
+            lhs = c.data();
+        }else if( isBinaryChar(t) || t.d_type == Lexer::BinSelector )
+        {
+            // binarySelector
+            ts.next(); // eat current token
+            Ref<MsgSend> c = new MsgSend();
+            c->d_loc = lhs->d_loc;
+            c->d_inMethod = scope->getMethod();
+            c->d_pattern << qMakePair(t.d_val,t.d_loc);
+            Ref<Expression> e = parseExpression(scope,ts,true);
             if( e.isNull() )
                 return c.data();
             c->d_args << e;
             c->d_patternType = Ast::BinaryPattern;
-        }else if( t.d_type == Lexer::Ident )
-        {
-            if( ts.peek(2).d_type == Lexer::Colon )
-            {
-                // Keyword selector
-
-                if( dontApplyKeywords )
-                    return lhs.data();
-
-                c = new MsgSend();
-                c->d_loc = lhs->d_loc;
-                c->d_inMethod = scope->getMethod();
-                c->d_patternType = Ast::KeywordPattern;
-                while( t.d_type == Lexer::Ident )
-                {
-                    if( ts.peek(2).d_type != Lexer::Colon )
-                    {
-                        error("invalid keyword call", t );
-                        return c.data();
-                    }
-                    c->d_pattern << qMakePair(t.d_val,t.d_loc);
-                    ts.next();
-                    ts.next();
-                    Ref<Expression> e = parseExpression(scope,ts,true);
-                    if( e.isNull() )
-                        return c.data();
-                    c->d_args << e;
-                    t = ts.peek();
-                }
-            }else
-            {
-                // unary selector
-                c = new MsgSend();
-                c->d_loc = lhs->d_loc;
-                c->d_inMethod = scope->getMethod();
-                c->d_pattern << qMakePair(t.d_val,t.d_loc);
-                c->d_patternType = Ast::UnaryPattern;
-                ts.next();
-            }
-        } // else no call
-
-        t = ts.peek();
-
-        if( t.d_type == Lexer::Semi )
-        {
-            // start or continue a cascade
-            ts.next(); // eat semi
-            t = ts.peek();
-            if( !isBinaryChar(t) && t.d_type != Lexer::Ident && t.d_type != Lexer::BinSelector )
-            {
-                error("expecting selector after ';'", t);
-                return lhs.data();
-            }
-            Q_ASSERT( !c.isNull() );
-            if( casc.isNull() )
-            {
-                casc = new Cascade();
-                casc->d_loc = c->d_loc;
-                c->d_receiver = lhs;
-                casc->d_calls.append(c);
-                lhs = casc.data();
-            }else
-            {
-                Q_ASSERT( !casc.isNull() && !casc->d_calls.isEmpty() );
-                c->d_receiver = casc->d_calls.first()->d_receiver;
-                casc->d_calls.append(c);
-            }
-        }else if( !casc.isNull() )
-        {
-            // this is the last element of the cascade
-            Q_ASSERT( !casc.isNull() && !casc->d_calls.isEmpty() );
-            c->d_receiver = casc->d_calls.first()->d_receiver;
-            casc->d_calls.append(c);
-            casc = 0; // close the cascade
-        }else
-        {
             c->d_receiver = lhs;
             lhs = c.data();
-        }
+        }else if( t.d_type == Lexer::Keyword )
+        {
+            // Keyword selector
+
+            if( dontApplyKeywords )
+                return lhs.data();
+
+            Ref<MsgSend> c = new MsgSend();
+            c->d_loc = lhs->d_loc;
+            c->d_inMethod = scope->getMethod();
+            c->d_patternType = Ast::KeywordPattern;
+            while( t.d_type == Lexer::Keyword )
+            {
+                ts.next(); // eat current token
+                c->d_pattern << qMakePair(t.d_val,t.d_loc);
+                Ref<Expression> e = parseExpression(scope,ts,true);
+                if( e.isNull() )
+                    return c.data();
+                c->d_args << e;
+                t = ts.peek();
+            }
+            c->d_receiver = lhs;
+            lhs = c.data();
+        }// else no call
+
+        t = ts.peek();
     }
 
     return lhs;
@@ -552,10 +515,13 @@ Ast::Ref<Expression> Parser::parseBlock(Ast::Function* outer,Parser::TokStream& 
 {
     Lexer::Token t = ts.next();
     Q_ASSERT( t.d_type == Lexer::Lbrack );
+    d_blockLevel++;
     Ref<Block> b = new Block();
     b->d_loc = t.d_loc;
     b->d_func->d_owner = outer;
+    b->d_syntaxLevel = d_blockLevel;
     parseBlockBody( b->d_func.data(), ts );
+    d_blockLevel--;
     return b.data();
 }
 
@@ -571,7 +537,8 @@ Ast::Ref<Expression> Parser::parseArray(Ast::Function* scope,Parser::TokStream& 
     {
         switch( t.d_type )
         {
-        case Lexer::Number:
+        case Lexer::Real:
+        case Lexer::Integer:
         case Lexer::Minus:
         case Lexer::String:
         case Lexer::Char:
@@ -582,31 +549,23 @@ Ast::Ref<Expression> Parser::parseArray(Ast::Function* scope,Parser::TokStream& 
                 a->d_elements << e.data();
             }
             break;
-        case Lexer::Ident:
-            // TODO: these idents seem to be symbols, not real idents
-            if( ts.peek(2).d_type == Lexer::Colon )
+        case Lexer::Keyword:
             {
-                // Ref<Selector> s = new Selector();
-                //s->d_pos = t.d_loc;
-                //a->d_elements << s.data();
-                // selector literal
+                // CHECK: these idents seem to be symbols, not real idents
                 QByteArray str;
                 while( t.isValid() && t.d_type == Lexer::Ident && ts.peek(2).d_type == Lexer::Colon )
                 {
-                    str += t.d_val + ":";
-                    ts.next();
-                    ts.next();
+                    ts.next(); // eat cur
+                    str += t.d_val;
                     t = ts.peek();
                 }
-                // s->d_pattern = Lexer::getSymbol(str);
                 a->d_elements << new Symbol( Lexer::getSymbol(str), t.d_loc );
-            }else
-            {
-                // normal ident
-                //a->d_elements << new Ident( t.d_val, t.d_loc );
-                a->d_elements << new Symbol( t.d_val, t.d_loc );
-                ts.next();
             }
+            break;
+        case Lexer::Ident:
+            // CHECK: these idents seem to be symbols, not real idents
+            a->d_elements << new Symbol( t.d_val, t.d_loc );
+            ts.next();
             break;
         case Lexer::Hash:
             if( ts.peek(2).d_type == Lexer::Ident )
@@ -651,6 +610,7 @@ Ast::Ref<Expression> Parser::parseAssig(Ast::Function* scope,Parser::TokStream& 
     a->d_loc = t.d_loc;
     a->d_lhs << new Ident(t.d_val,t.d_loc, scope->getMethod() );
     ts.next(); // eat assig
+#if 0 // no concatenated assigns in SOM (presumably)
     while( ts.peek(2).d_type == Lexer::Assig )
     {
         t = ts.next();
@@ -662,6 +622,7 @@ Ast::Ref<Expression> Parser::parseAssig(Ast::Function* scope,Parser::TokStream& 
         a->d_lhs << new Ident(t.d_val,t.d_loc, scope->getMethod() );
         ts.next(); // eat assig
     }
+#endif
     a->d_rhs = parseExpression(scope, ts);
     return a.data();
 }
@@ -671,6 +632,8 @@ Ast::Ref<Expression> Parser::parseReturn(Ast::Function* scope,Parser::TokStream&
     Lexer::Token t = ts.next();
     Q_ASSERT( t.d_type == Lexer::Hat );
     Ref<Return> r = new Return();
+    if( d_blockLevel > 0 )
+        r->d_nonLocal = true;
     r->d_loc = t.d_loc;
     r->d_what = parseExpression(scope, ts);
     return r.data();
@@ -713,7 +676,8 @@ bool Parser::parseBlockBody(Function* block, Parser::TokStream& ts)
         case Lexer::Symbol:
         case Lexer::Lpar:
         case Lexer::Lbrack:
-        case Lexer::Number:
+        case Lexer::Real:
+        case Lexer::Integer:
         case Lexer::String:
         case Lexer::Char:
         case Lexer::Minus:
@@ -735,7 +699,11 @@ bool Parser::parseBlockBody(Function* block, Parser::TokStream& ts)
             {
                 Ref<Expression> e = parseReturn(block,ts);
                 if( !e.isNull() )
+                {
                     block->d_body.append(e);
+                    if( d_blockLevel > 0 )
+                        d_curMeth->d_hasNonLocalReturn = true;
+                }
             }
             break;
         case Lexer::Dot:

@@ -24,6 +24,18 @@ Here is a screenshot:
 
 ![Overview](http://software.rochus-keller.info/screenshot_som_classbrowser_0.1.png)
 
+### A SOM to Lua transpiler with LuaJIT based VM
+
+This is currently an experimental implementation and work in progress. Hello.som and parts of the Benchmarks package work. The focus is not (yet) on performance, but on the most direct mapping from Smalltalk to Lua syntax constructs possible. There no inlining yet. The object model mapping is described in the comments of SomLjObjectManager.cpp. Starting from the main SOM file (provided by command line) all explicitly referenced classes are loaded at compile time. 
+
+The transpiled methods are written to Lua files in the Lua subdirectory relative to the main SOM file for inspection. 
+
+The VM includes my Lua IDE (see https://github.com/rochus-keller/LjTools#lua-parser-and-ide-features); the IDE can be enabled by the -ide or -pro command line option. The source level debugger is available; you can set breakpoints and step through the Lua code, watching the stack trace and the local variable values.
+
+Here is a screenshot:
+
+![Overview](http://software.rochus-keller.info/screenshot_som_lua_vm_ide_0.1)
+
 
 ### Binary versions
 

@@ -35,13 +35,18 @@ Block = (
         [ self value not ] whileTrue: block 
     )
     
-    whileTrue: block = (
+    whileTrue: block = primitive "RK as primitive
+    (
         self value ifFalse: [ ^nil ].
         block value.
         self restart
-    )
+    )"
     
     "Restarting"
-    restart = primitive
+    "RK not used: restart = primitive"
+    
+    "RK moved here from Block2 and Block3"
+    value: argument = primitive
+    value: arg1 with: arg2 = primitive
     
 )

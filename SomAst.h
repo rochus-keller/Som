@@ -27,6 +27,8 @@
 #include <QSet>
 #include <QString>
 
+class QTextStream;
+
 namespace Som
 {
 namespace Ast
@@ -42,7 +44,7 @@ namespace Ast
     struct Block; struct Variable; struct Cascade; struct Assig; struct Char; struct String;
     struct Number; struct Symbol; struct Ident; struct Selector; struct Scope; struct Named; struct Function;
 
-    struct AstVisitor
+    struct Visitor
     {
         virtual void visit( MsgSend* ) {}
         virtual void visit( Return* ) {}
@@ -79,14 +81,16 @@ namespace Ast
 
         Loc d_loc;
         Thing() {}
+        void dump( QTextStream& );
         virtual int getTag() const { return T_Thing; }
-        virtual void accept(AstVisitor* v){}
+        virtual void accept(Visitor* v){}
         virtual quint32 getLen() const { return 0; }
     };
 
     struct Expression : public Thing
     {
-
+        enum Keyword { None = 0, _nil, _true, _false, _self, _super, _primitive };
+        virtual quint8 keyword() const { return 0; }
     };
     typedef QList<Ref<Expression> > ExpList;
 
@@ -97,14 +101,15 @@ namespace Ast
         QByteArray d_ident;
         Named* d_resolved;
         Method* d_inMethod;
-        bool d_keyword;
         quint8 d_use;
+        quint8 d_keyword;
 
         Ident( const QByteArray& ident, const Loc& pos, Method* f = 0 ):d_ident(ident),d_resolved(0),
-            d_use(Undefined),d_keyword(false),d_inMethod(f) { d_loc = pos; }
+            d_use(Undefined),d_inMethod(f),d_keyword(None) { d_loc = pos; }
         int getTag() const { return T_Ident; }
         quint32 getLen() const { return d_ident.size(); }
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
+        quint8 keyword() const { return d_keyword; }
     };
 
     struct Symbol : public Expression
@@ -114,7 +119,7 @@ namespace Ast
         Symbol( const QByteArray& sym, const Loc& pos ):d_sym(sym) { d_loc = pos; }
         int getTag() const { return T_Symbol; }
         quint32 getLen() const { return d_sym.size(); }
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
     };
 
     struct Selector : public Expression
@@ -122,16 +127,17 @@ namespace Ast
         QByteArray d_pattern;
         int getTag() const { return T_Selector; }
         quint32 getLen() const { return d_pattern.size(); }
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
     };
 
     struct Number : public Expression
     {
         QByteArray d_num;
-        Number( const QByteArray& num, const Loc& pos ):d_num(num) { d_loc = pos; }
+        bool d_real;
+        Number( const QByteArray& num, bool real, const Loc& pos ):d_num(num),d_real(real) { d_loc = pos; }
         int getTag() const { return T_Number; }
         quint32 getLen() const { return d_num.size(); }
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
     };
 
     struct String : public Expression
@@ -140,7 +146,7 @@ namespace Ast
         String( const QByteArray& str, const Loc& pos ):d_str(str) { d_loc = pos; }
         int getTag() const { return T_String; }
         quint32 getLen() const { return d_str.size() + 2; } // +2 because of ''
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
     };
 
     struct Char : public Expression
@@ -149,14 +155,14 @@ namespace Ast
         Char( char ch, const Loc& pos ):d_ch(ch) { d_loc = pos; }
         int getTag() const { return T_Char; }
         quint32 getLen() const { return 2; } // 2 because of $ prefix
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
     };
 
     struct ArrayLiteral : public Expression
     {
         ExpList d_elements;
         int getTag() const { return T_Array; }
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
     };
 
     struct Assig : public Expression
@@ -164,7 +170,7 @@ namespace Ast
         QList<Ref<Ident> > d_lhs; // Ident designates a Variable
         Ref<Expression> d_rhs;
         int getTag() const { return T_Assig; }
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
     };
 
     enum PatternType { NoPattern, UnaryPattern, BinaryPattern, KeywordPattern };
@@ -178,7 +184,7 @@ namespace Ast
         Method* d_inMethod;
         MsgSend():d_patternType(NoPattern),d_inMethod(0){}
         int getTag() const { return T_MsgSend; }
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
         QByteArray prettyName(bool withSpace = true) const;
     };
 
@@ -187,14 +193,17 @@ namespace Ast
         // NOTE: all d_calls must point to the same d_receiver Expression!
         QList< Ref<MsgSend> > d_calls;
         int getTag() const { return T_Cascade; }
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
     };
 
     struct Return : public Expression
     {
         Ref<Expression> d_what;
+        bool d_nonLocal;
+        bool d_nonLocalIfInlined;
+        Return():d_nonLocal(false),d_nonLocalIfInlined(false){}
         int getTag() const { return T_Return; }
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
     };
 
     struct Named : public Thing
@@ -231,29 +240,34 @@ namespace Ast
 
     struct Block : public Expression
     {
-        Ref<Function> d_func;
+        Ref<Function> d_func; // not named
+        quint8 d_syntaxLevel, d_inlinedLevel; // 0 is method
+        bool d_inline;
         Block();
         int getTag() const { return T_Block; }
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
     };
 
     struct Method : public Function
     {
         quint8 d_patternType;
-        bool d_classLevel;
-        bool d_primitive; // specified primitive id or zero
+        quint8 d_classLevel : 1;
+        quint8 d_primitive : 1; // specified primitive id or zero
+        quint8 d_hasNonLocalReturn : 1;
+        quint8 d_hasNonLocalReturnIfInlined : 1;
         QByteArrayList d_pattern; // compact form in d_name
         quint32 d_endPos;
         QByteArray d_category;
         ExpList d_helper;
 
-        Method():d_patternType(NoPattern),d_classLevel(false),d_endPos(0),d_primitive(false){}
+        Method():d_patternType(NoPattern),d_classLevel(false),d_endPos(0),d_primitive(false),
+            d_hasNonLocalReturn(false),d_hasNonLocalReturnIfInlined(false){}
         static QByteArray prettyName(const QByteArrayList& pattern, quint8 kind, bool withSpace = true );
         QByteArray prettyName(bool withSpace = true) const;
         Variable* findVar( const QByteArray& ) const;
         int getTag() const { return T_Method; }
         Expression* findByPos( quint32 ) const;
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
         bool classLevel() const { return d_classLevel; }
     };
     typedef Ref<Method> MethodRef;
@@ -262,9 +276,10 @@ namespace Ast
     {
         enum { InstanceLevel, ClassLevel, Argument, Temporary, Global };
         quint8 d_kind;
-        Variable():d_kind(InstanceLevel){}
+        quint16 d_slot; // to be set by compiler
+        Variable():d_kind(InstanceLevel),d_slot(0){}
         int getTag() const { return T_Variable; }
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
         bool classLevel() const { return d_kind == ClassLevel; }
     };
     typedef Ref<Variable> VarRef;
@@ -275,7 +290,7 @@ namespace Ast
         QByteArray d_category;
         QByteArray d_comment, d_classComment;
 
-        QList< Ref<Variable> > d_vars;
+        QList< Ref<Variable> > d_instVars, d_classVars;
         QList< Ref<Method> > d_methods;
         QList< Ref<Class> > d_subs;
 
@@ -285,7 +300,7 @@ namespace Ast
         Class* getSuper() const;
         void addMethod(Method*);
         void addVar(Variable*);
-        void accept(AstVisitor* v) { v->visit(this); }
+        void accept(Visitor* v) { v->visit(this); }
     };
     typedef Ref<Class> ClassRef;
 }

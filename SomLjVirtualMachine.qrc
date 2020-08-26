@@ -1,0 +1,33 @@
+<RCC>
+    <qresource prefix="/">
+        <file>images/close.png</file>
+        <file>images/exclamation-circle.png</file>
+        <file>images/exclamation-red.png</file>
+        <file>Smalltalk/Array.som</file>
+        <file>Smalltalk/Block.som</file>
+        <file>Smalltalk/Block1.som</file>
+        <file>Smalltalk/Block2.som</file>
+        <file>Smalltalk/Block3.som</file>
+        <file>Smalltalk/Boolean.som</file>
+        <file>Smalltalk/Class.som</file>
+        <file>Smalltalk/Dictionary.som</file>
+        <file>Smalltalk/Double.som</file>
+        <file>Smalltalk/False.som</file>
+        <file>Smalltalk/HashEntry.som</file>
+        <file>Smalltalk/Hashtable.som</file>
+        <file>Smalltalk/Integer.som</file>
+        <file>Smalltalk/Metaclass.som</file>
+        <file>Smalltalk/Method.som</file>
+        <file>Smalltalk/Nil.som</file>
+        <file>Smalltalk/Object.som</file>
+        <file>Smalltalk/Pair.som</file>
+        <file>Smalltalk/Primitive.som</file>
+        <file>Smalltalk/Set.som</file>
+        <file>Smalltalk/String.som</file>
+        <file>Smalltalk/Symbol.som</file>
+        <file>Smalltalk/System.som</file>
+        <file>Smalltalk/True.som</file>
+        <file>Smalltalk/Vector.som</file>
+        <file>SomPrimitives.lua</file>
+    </qresource>
+</RCC>

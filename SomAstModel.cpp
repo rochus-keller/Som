@@ -41,7 +41,7 @@ static bool sortFields( const Ref<Variable>& lhs, const Ref<Variable>& rhs )
     return lhs->d_name < rhs->d_name;
 }
 
-struct Model::ResolveIdents : public AstVisitor
+struct Model::ResolveIdents : public Visitor
 {
     QList<Scope*> stack;
     Model* mdl;
@@ -54,8 +54,10 @@ struct Model::ResolveIdents : public AstVisitor
         inAssig = false;
         meth = 0;
         stack.push_back(m);
-        for( int i = 0; i < m->d_vars.size(); i++ )
-            m->d_vars[i]->accept(this);
+        for( int i = 0; i < m->d_instVars.size(); i++ )
+            m->d_instVars[i]->accept(this);
+        for( int i = 0; i < m->d_classVars.size(); i++ )
+            m->d_classVars[i]->accept(this);
         for( int i = 0; i < m->d_methods.size(); i++ )
             m->d_methods[i]->accept(this);
         stack.pop_back();
@@ -93,6 +95,7 @@ struct Model::ResolveIdents : public AstVisitor
     }
     void visit( Cascade* c )
     {
+        // never occurs!!!
         for( int i = 0; i < c->d_calls.size(); i++ )
             c->d_calls[i]->accept(this);
     }
@@ -196,6 +199,12 @@ struct Model::ResolveIdents : public AstVisitor
         for( int i = 0; i < a->d_elements.size(); i++ )
             a->d_elements[i]->accept(this);
     }
+    virtual void visit( Selector* )
+    {
+        Q_ASSERT( false ); // never occurs
+        qDebug() << "selector";
+    }
+
 };
 
 bool Model::parse(const Files& files)
@@ -277,10 +286,10 @@ bool Model::parse(const Files& files)
             if( i.value()->d_methods[j]->d_primitive )
                 d_px[ i.value()->d_methods[j]->d_name.constData() ].append( i.value()->d_methods[j].data() );
         }
-        for( int j = 0; j < i.value()->d_vars.size(); j++ )
-        {
-            d_vx[ i.value()->d_vars[j]->d_name.constData() ].append( i.value()->d_vars[j].data() );
-        }
+        for( int j = 0; j < i.value()->d_instVars.size(); j++ )
+            d_vx[ i.value()->d_instVars[j]->d_name.constData() ].append( i.value()->d_instVars[j].data() );
+        for( int j = 0; j < i.value()->d_classVars.size(); j++ )
+            d_vx[ i.value()->d_classVars[j]->d_name.constData() ].append( i.value()->d_classVars[j].data() );
     }
 
     if( !d_errs.isEmpty() )

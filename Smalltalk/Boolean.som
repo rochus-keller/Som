@@ -34,6 +34,13 @@ Boolean = (
     "Logical operations"
     || boolean = ( ^self or: boolean  )
     && boolean = ( ^self and: boolean )
-    
+        
+    "RK: implement True and False here because in Lua there is only one class (Boolean) for true/false"
+    asString       = primitive
+    ifTrue:  block = primitive
+    ifFalse: block = primitive
+    not        = primitive
+    or: block  = primitive
+    and: block = primitive
 )
 

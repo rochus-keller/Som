@@ -64,7 +64,7 @@ protected:
         bool atEnd() const { return d_pos >= d_toks.size(); }
     };
 
-    bool parseMethodBody( Ast::Method*, TokStream& );
+    bool parseMethodBody(TokStream& );
     bool parseLocals(Ast::Function*, TokStream& );
     Ast::Ref<Ast::Expression> parseExpression(Ast::Function*, TokStream&, bool dontApplyKeywords = false);
     Ast::Ref<Ast::Expression> parseBlock(Ast::Function*, TokStream&);
@@ -78,6 +78,8 @@ private:
     QByteArray primitive, Object;
     QList<Error> d_errs;
     Ast::Ref<Ast::Class> d_curClass;
+    Ast::Ref<Ast::Method> d_curMeth;
+    int d_blockLevel;
 };
 }
 

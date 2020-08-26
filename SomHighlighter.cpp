@@ -136,7 +136,7 @@ void Highlighter::highlightBlock(const QString& text)
             lexerState = 2;
         }else if( t.d_type == Lexer::String || t.d_type == Lexer::Char )
             f = d_format[C_Str];
-        else if( t.d_type == Lexer::Number )
+        else if( t.d_type == Lexer::Real || t.d_type == Lexer::Integer )
             f = d_format[C_Num];
         else if( t.d_type == Lexer::Symbol )
         {

@@ -30,7 +30,8 @@ const char* Lexer::s_typeName[] = {
     "Colon", "Hat", "Hash", "Assig", "Tilde", "At", "Percent", "Ampers", "Star", "Minus", "Plus",
     "Eq", "Bar", "Bslash", "Lt", "Gt", "Comma", "Qmark", "Slash", "Dot", "Semi",
     "Lpar", "Rpar", "Lbrack", "Rbrack",
-    "String", "Char", "Ident", "Number", "Comment", "LCmt", "LStr", "Symbol", "BinSelector", "Separator"
+    "String", "Char", "Ident", "Integer", "Real", "Comment", "LCmt", "LStr", "Symbol", "BinSelector",
+    "Separator", "Keyword"
 };
 
 QHash<QByteArray,QByteArray> Lexer::d_symbols;
@@ -81,8 +82,8 @@ Lexer::Token Lexer::nextImp()
         return string();
     case '"':
         return comment();
-    case '_':
-        return ident(ch);
+    // case '_': SOM idents don't start with underscore, but can include it
+    //     return ident(ch);
     case ':':
         if( peekChar(1) == '=' )
         {
@@ -263,8 +264,12 @@ Lexer::Token Lexer::ident(char ch)
         str += c;
         get();
     }
-
-    return commit( Ident, getSymbol(str) );
+    if( peekChar() == ':' )
+    {
+        str += get();
+        return commit( Keyword, getSymbol(str) );
+    }else
+        return commit( Ident, getSymbol(str) );
 }
 
 Lexer::Token Lexer::selector(char ch)
@@ -394,11 +399,13 @@ Lexer::Token Lexer::number(char ch)
             str += get();
         }
     }
+    bool real = false;
     if( ch == '.' )
     {
         const char ch2 = peekChar(2);
         if( ::isspace(ch2) || ch2 == ']' || ch2 == ')' || ch2 == 0 )
-            return commit(Number,str);
+            return commit(Integer,str);
+        real = true;
         str += get();
         ch = peekChar();
         if( !checkDigit(kind,ch) )
@@ -414,6 +421,7 @@ Lexer::Token Lexer::number(char ch)
     }
     if( ch == 'e' )
     {
+        real = true;
         str += get();
         ch = peekChar();
         if( !checkDigit(kind,ch) && ch != '-' )
@@ -434,7 +442,7 @@ Lexer::Token Lexer::number(char ch)
             str += get();
         }
     }
-    return commit(Number,str);
+    return commit( real ? Real : Integer,str);
 }
 
 Lexer::Token Lexer::token(TokenType type, char ch)
@@ -539,22 +547,22 @@ bool Lexer::isBinaryChar(char ch)
 {
     switch( ch )
     {
-    case '-':
-    case '!':
-    case '&':
-    case '*':
-    case '+':
-    case ',':
-    case '/':
-    case '<':
-    case '>':
-    case '=':
-    case '?':
-    case '@':
-    case '\\':
-    case '~':
-    case '|':
-    case '%':
+    case '-': // m
+    case '!': // e
+    case '&': // a
+    case '*': // s
+    case '+': // p
+    case ',': // c
+    case '/': // h
+    case '<': // l
+    case '>': // g
+    case '=': // q
+    case '?': // Q
+    case '@': // A
+    case '\\':// B
+    case '~': // t
+    case '|': // b
+    case '%': // r
         return true;
     default:
         return false;
