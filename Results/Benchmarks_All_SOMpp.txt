@@ -1,0 +1,117 @@
+SOM++ commit c46c3bf June 28 from https://github.com/SOM-st/SOMpp
+Downloaded as zip and unpacked
+Compiled using my own qmake SOMpp.pro file and M&S GC
+
+./SOMpp -cp Smalltalk:Examples/Benchmarks/LanguageFeatures Examples/Benchmarks/All.som
+This is SOM++
+	garbage collector: mark-sweep
+	not tagging integers
+	not caching integers
+--------------------------------------
+Start execution of all benchmarks. Iterations: 100
+Starting Fibonacci benchmark ...  warmup ... completed.
+
+Benchmark: Fibonacci
+   Iterations: 34 (elapsed time 3050 ms)
+   AVERAGE: 90 ms
+
+Starting Dispatch benchmark ...  warmup ... completed.
+
+Benchmark: Dispatch
+   Iterations: 32 (elapsed time 3036 ms)
+   AVERAGE: 95 ms
+
+Starting Bounce benchmark ...  warmup ... completed.
+
+Benchmark: Bounce
+   Iterations: 39 (elapsed time 3051 ms)
+   AVERAGE: 78 ms
+
+Starting Loop benchmark ...  warmup ... completed.
+
+Benchmark: Loop
+   Iterations: 35 (elapsed time 3019 ms)
+   AVERAGE: 86 ms
+
+Starting Permute benchmark ...  warmup ... completed.
+
+Benchmark: Permute
+   Iterations: 33 (elapsed time 3004 ms)
+   AVERAGE: 91 ms
+
+Starting Queens benchmark ...  warmup ... completed.
+
+Benchmark: Queens
+   Iterations: 29 (elapsed time 3051 ms)
+   AVERAGE: 105 ms
+
+Starting List benchmark ...  warmup ... completed.
+
+Benchmark: List
+   Iterations: 27 (elapsed time 3045 ms)
+   AVERAGE: 113 ms
+
+Starting Recurse benchmark ...  warmup ... completed.
+
+Benchmark: Recurse
+   Iterations: 29 (elapsed time 3105 ms)
+   AVERAGE: 107 ms
+
+Starting Storage benchmark ...  warmup ... completed.
+
+Benchmark: Storage
+   Iterations: 43 (elapsed time 3021 ms)
+   AVERAGE: 70 ms
+
+Starting Sieve benchmark ...  warmup ... completed.
+
+Benchmark: Sieve
+   Iterations: 31 (elapsed time 3017 ms)
+   AVERAGE: 97 ms
+
+Starting BubbleSort benchmark ...  warmup ... completed.
+
+Benchmark: BubbleSort
+   Iterations: 35 (elapsed time 3024 ms)
+   AVERAGE: 86 ms
+
+Starting QuickSort benchmark ...  warmup ... completed.
+
+Benchmark: QuickSort
+   Iterations: 49 (elapsed time 3021 ms)
+   AVERAGE: 62 ms
+
+Starting Sum benchmark ...  warmup ... completed.
+
+Benchmark: Sum
+   Iterations: 37 (elapsed time 3072 ms)
+   AVERAGE: 83 ms
+
+Starting Towers benchmark ...  warmup ... completed.
+
+Benchmark: Towers
+   Iterations: 26 (elapsed time 3029 ms)
+   AVERAGE: 117 ms
+
+Starting TreeSort benchmark ...  warmup ... completed.
+
+Benchmark: TreeSort
+   Iterations: 57 (elapsed time 3001 ms)
+   AVERAGE: 53 ms
+
+Starting IntegerLoop benchmark ...  warmup ... completed.
+
+Benchmark: IntegerLoop
+   Iterations: 18 (elapsed time 3026 ms)
+   AVERAGE: 168 ms
+
+Starting FieldLoop benchmark ...  warmup ... completed.
+
+Benchmark: FieldLoop
+   Iterations: 9 (elapsed time 3357 ms)
+   AVERAGE: 373 ms
+
+Summed Average Runtime: 373 ms
+Time spent in GC: [0.352000] msec
+
+Total runtime by stop watch 74 secs

@@ -170,8 +170,7 @@ struct LjObjectManager::ResolveIdents : public Visitor
     void visit( Assig* a )
     {
         inAssig = true;
-        for( int i = 0; i < a->d_lhs.size(); i++ )
-            a->d_lhs[i]->accept(this);
+        a->d_lhs->accept(this);
         inAssig = false;
         a->d_rhs->accept(this);
     }
@@ -598,6 +597,8 @@ bool LjObjectManager::instantiateClasses()
         Q_ASSERT( !lua_isnil( L, -1 ) );
         lua_setmetatable(L,-3);
         lua_pop(L,2);
+
+        d_lua->executeCmd("Double._class.__unm = function(op) return -op._dbl end");
     }
 
     for( int i = oldInstantiated; i < d_loadingOrder.size(); i++ )
@@ -813,6 +814,7 @@ bool LjObjectManager::compileMethods(Ast::Class* cls)
     ts << "local metaclass = " << cls->d_name << endl;
     ts << "local class = " << cls->d_name << "._class" << endl;
     ts << "local function _block(f) local t = { _f = f }; setmetatable(t,Block._class); return t end" << endl;
+    // ts << "local function _nil(p) TRAP( p == nil ); return p end" << endl;
     ts << "local _str = _primitives._newString" << endl;
     ts << "local _sym = _primitives._newSymbol" << endl;
     ts << "local _dbl = _primitives._newDouble" << endl;

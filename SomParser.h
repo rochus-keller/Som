@@ -66,7 +66,8 @@ protected:
 
     bool parseMethodBody(TokStream& );
     bool parseLocals(Ast::Function*, TokStream& );
-    Ast::Ref<Ast::Expression> parseExpression(Ast::Function*, TokStream&, bool dontApplyKeywords = false);
+    Ast::Ref<Ast::Expression> parseExpression(Ast::Function*, TokStream&, quint8 inPattern = 0);
+    Ast::Ref<Ast::Expression> simpleExpression(Ast::Function*, TokStream&);
     Ast::Ref<Ast::Expression> parseBlock(Ast::Function*, TokStream&);
     Ast::Ref<Ast::Expression> parseArray(Ast::Function*, TokStream&);
     Ast::Ref<Ast::Expression> parseAssig(Ast::Function*, TokStream&);

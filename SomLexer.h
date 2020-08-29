@@ -22,7 +22,7 @@
 
 #include <QObject>
 #include <QHash>
-#include <Som/SomAstModel.h>
+#include <Som/SomAst.h>
 
 class QIODevice;
 

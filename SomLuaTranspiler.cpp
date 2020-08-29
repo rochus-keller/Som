@@ -63,9 +63,9 @@ struct LuaTranspilerVisitor : public Ast::Visitor
             assigToExpr( r->d_what.data() );
             out << " )";
 #else
-            out << "_nonLocal = true; _nlRes = ";
+            out << "_nlRes = ";
             assigToExpr( r->d_what.data() );
-            out << "; error(_nlRes)";
+            out << "; _nonLocal = true; error(_nlRes)";
             // NOTE: error(x) doesn't deliver x to pcall result, but instead a string
 #endif
         }else
@@ -150,7 +150,9 @@ struct LuaTranspilerVisitor : public Ast::Visitor
         if( m->d_hasNonLocalReturn )
         {
             out << ws() << "end )" << endl;
-            out << ws() << "if _status then return _pcallRes elseif _nonLocal then return _nlRes else error(_pcallRes) end" << endl;
+            out << ws() << "if _status then return _pcallRes "
+                << "elseif _nonLocal then return _nlRes "
+                << "else error(_pcallRes) end" << endl;
             level--;
         }
 
@@ -193,7 +195,7 @@ struct LuaTranspilerVisitor : public Ast::Visitor
                     b->d_func->d_body[i]->accept( this );
                     out << endl;
                     out << ws() << "return ";
-                    a->d_lhs.first()->accept(this);
+                    a->d_lhs->accept(this);
                 }else if( tag == Thing::T_Return )
                 {
                     b->d_func->d_body[i]->accept( this );
@@ -223,7 +225,7 @@ struct LuaTranspilerVisitor : public Ast::Visitor
             e->accept( this );
             out << "; ";
             out << "return ";
-            a->d_lhs.first()->accept(this);
+            a->d_lhs->accept(this);
             out << " end )()";
         }else
             e->accept(this);
@@ -236,8 +238,9 @@ struct LuaTranspilerVisitor : public Ast::Visitor
             out << "self._super.";
         else
         {
+            out << "(";
             assigToExpr( ms->d_receiver.data() );
-            out << ":";
+            out << "):";
         }
         out << LuaTranspiler::map(ms->prettyName(false),ms->d_patternType) << "(";
         if( toSuper )
@@ -258,8 +261,8 @@ struct LuaTranspilerVisitor : public Ast::Visitor
 
     virtual void visit( Assig* a )
     {
-        Q_ASSERT( a->d_lhs.size() == 1 && a->d_lhs.first()->d_resolved );
-        a->d_lhs.first()->accept(this);
+        Q_ASSERT( a->d_lhs->d_resolved );
+        a->d_lhs->accept(this);
         out << " = ";
         assigToExpr( a->d_rhs.data() );
     }
@@ -294,7 +297,7 @@ struct LuaTranspilerVisitor : public Ast::Visitor
             if( i->d_keyword == Ast::Ident::_super )
                 out << "self._super";
             else
-                out << "(" << i->d_ident << ")";
+                out << i->d_ident;
         }else
         {
             Q_ASSERT( i->d_resolved );

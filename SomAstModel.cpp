@@ -102,8 +102,7 @@ struct Model::ResolveIdents : public Visitor
     void visit( Assig* a )
     {
         inAssig = true;
-        for( int i = 0; i < a->d_lhs.size(); i++ )
-            a->d_lhs[i]->accept(this);
+        a->d_lhs->accept(this);
         inAssig = false;
         a->d_rhs->accept(this);
     }

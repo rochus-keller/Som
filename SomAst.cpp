@@ -157,8 +157,7 @@ Expression* Method::findByPos(quint32 pos) const
         }
         void visit( Assig* a )
         {
-            for( int i = 0; i < a->d_lhs.size(); i++ )
-                a->d_lhs[i]->accept(this);
+            a->d_lhs->accept(this);
             a->d_rhs->accept(this);
         }
         void visit( Symbol* s )
@@ -431,11 +430,10 @@ void Thing::dump(QTextStream& out)
         }
         virtual void visit( Assig* a)
         {
-            Q_ASSERT( a->d_lhs.size() == 1 );
             out << "ASS: ";
             level++;
             out << endl << ws() << "LHS: ";
-            a->d_lhs.first()->accept(this);
+            a->d_lhs->accept(this);
             out << endl << ws() << "RHS: ";
             a->d_rhs->accept(this);
             level--;

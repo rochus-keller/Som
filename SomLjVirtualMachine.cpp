@@ -30,6 +30,7 @@
 #include <QtDebug>
 #include <lua.hpp>
 #include <QPainter>
+#include <iostream>
 using namespace Som;
 using namespace Lua;
 
@@ -273,12 +274,18 @@ void LjVirtualMachine::onNotify(int messageType, QByteArray val1, int val2)
     switch(messageType)
     {
     case Lua::Engine2::Print:
-    case Lua::Engine2::Cout:
         qDebug() << val1.trimmed().constData();
         break;
-    case Lua::Engine2::Error:
+    case Lua::Engine2::Cout:
+        std::cout << val1.constData();
+        std::cout << std::flush;
+        break;
     case Lua::Engine2::Cerr:
-        //qCritical() << "ERR" << val1.trimmed().constData();
+        std::cerr << val1.constData();
+        std::cerr << std::flush;
+        break;
+    case Lua::Engine2::Error:
+        qCritical() << "ERR" << val1.trimmed().constData();
         break;
     }
 }
@@ -289,7 +296,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Som");
     a.setApplicationName("SOM on LuaJIT");
-    a.setApplicationVersion("0.1");
+    a.setApplicationVersion("0.2");
     a.setStyle("Fusion");
 
     QString somFile;
@@ -337,7 +344,6 @@ int main(int argc, char *argv[])
             }
         }else if( args[i] == "-cp" )
         {
-            ide = true;
             if( i+1 >= args.size() )
             {
                 qCritical() << "error: invalid -cp option" << endl;

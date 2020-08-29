@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <QtDebug>
+#include <QElapsedTimer>
 
 #ifdef _WIN32
 #define DllExport __declspec(dllexport)
@@ -70,6 +71,14 @@ DllExport int Som_isDigits( const char* str )
             return 0;
     }
     return 1;
+}
+
+DllExport int Som_usecs()
+{
+    static QElapsedTimer t;
+    if( !t.isValid() )
+        t.start();
+    return t.nsecsElapsed() / 1000;
 }
 
 

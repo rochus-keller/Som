@@ -167,7 +167,7 @@ namespace Ast
 
     struct Assig : public Expression
     {
-        QList<Ref<Ident> > d_lhs; // Ident designates a Variable
+        Ref<Ident> d_lhs; // Ident designates a Variable
         Ref<Expression> d_rhs;
         int getTag() const { return T_Assig; }
         void accept(Visitor* v) { v->visit(this); }

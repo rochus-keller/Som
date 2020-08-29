@@ -26,7 +26,16 @@ Here is a screenshot:
 
 ### A SOM to Lua transpiler with LuaJIT based VM
 
-This is currently an experimental implementation and work in progress. Hello.som and parts of the Benchmarks package work. The focus is not (yet) on performance, but on the most direct mapping from Smalltalk to Lua syntax constructs possible. There no inlining yet. The object model mapping is described in the comments of SomLjObjectManager.cpp. Starting from the main SOM file (provided by command line) all explicitly referenced classes are loaded at compile time. 
+This is currently an experimental implementation and work in progress. Hello.som and the Benchmarks package work. The focus is not (yet) on performance, but on the most direct mapping from Smalltalk to Lua syntax constructs possible. There is no inlining yet. The object model mapping is described in the comments of SomLjObjectManager.cpp. Starting from the main SOM file (provided by command line) all explicitly referenced classes are loaded at compile time. 
+
+See the Benchmarks_All_*.txt files in the Results folder for performance comparisons with CSOM and SOMpp. Even though my LuaJIT based SOM implementation is not optimized for performance yet it performs pretty well compared to the original C/C++ VMs provided on http://som-st.github.io/. On my test machine (HP EliteBook 2530p, Intel Core Duo L9400 1.86GHz, 4GB RAM, Linux i386) I get the following results when running Examples/Benchmarks/All.som:
+
+Version | Summed Average Runtime [ms] | Speed-down
+--- | --- | ---
+SOM++ copying collector | 658 | 26
+SOM++ mark-sweep | 373 | 15
+CSOM | 1074 | 43
+SomLjVirtualMachine v0.2 | 25 | 1
 
 The transpiled methods are written to Lua files in the Lua subdirectory relative to the main SOM file for inspection. 
 

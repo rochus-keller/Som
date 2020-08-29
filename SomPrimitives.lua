@@ -35,6 +35,7 @@ ffi.cdef [[
 	int Som_isWhiteSpace( const char* str );
 	int Som_isLetters( const char* str );
 	int Som_isDigits( const char* str );
+	int Som_usecs();
 ]]
 
 function module._newString(str)
@@ -130,6 +131,7 @@ module.Object["instVarAt:"] = module.Object.instVarAt_
 
 function module.Object.instVarAt_put_(self,idx,obj)
 	self[idx] = obj
+	return self
 end
 module.Object["instVarAt:put:"] = module.Object.instVarAt_put_
 
@@ -182,6 +184,7 @@ module.String = {}
 
 function module.String.concatenate_(self,argument)
 	self._str = self._str .. argument._str
+	return self
 end
 module.String ["concatenate:"] = module.String.concatenate_
 
@@ -242,15 +245,16 @@ module.Array["at:"] = module.Array.at_
 
 function module.Array.at_put_(self,index,value)
 	self[index] = value
+	return self
 end
 module.Array["at:put:"] = module.Array.at_put_
 
 function module.Array.length(self)
-	return #self
+	return self._n or #self
 end
 
 function module.Array.new_(self,length)
-	local t = {}
+	local t = { _n = length }
 	setmetatable( t, Array._class )
 	return t
 end
@@ -261,6 +265,7 @@ module.System = {}
 
 function module.System.printString(self,string)
 	print( string._str )
+	return self
 end
 module.System["printString:"] = module.System.printString
 
@@ -271,6 +276,7 @@ module.System["global:"] = module.System.global_
 
 function module.System.global_put_(self,name,value)
 	_G[name] = value
+	return self
 end
 module.System["global:put:"] = module.System.global_put_
 
@@ -294,26 +300,29 @@ module.System["exit:"] = module.System.exit_
 
 function module.System.printString_(self,str)
 	io.stdout:write(str._str)
+	return self
 end
 module.System["printString:"] = module.System.printString_
 
 function module.System.printNewline(self)
 	io.stdout:write("\n")
+	return self
 end
 module.System["printNewline"] = module.System.printNewline
 
 function module.System.time(self)
-	return os.clock() -- TODO
+	return C.Som_usecs() / 1000 -- milliseconds since start
 end
 module.System["time"] = module.System.time
 
 function module.System.ticks(self)
-	return os.clock() -- TODO
+	return C.Som_usecs() -- microseconds since start
 end
 module.System["ticks"] = module.System.ticks
 
 function module.System.fullGC(self)
 	collectgarbage()
+	return self
 end
 module.System["fullGC"] = module.System.fullGC
 
@@ -321,31 +330,32 @@ module.System["fullGC"] = module.System.fullGC
 module.Integer = {}
 
 function module.Integer.plus(self,arg)
-	return self + arg
+	return self + (-(-arg))
 end
 module.Integer["+"] = module.Integer.plus
 
 function module.Integer.minus(self,arg)
-	return self - arg
+	return self - (-(-arg))
 end
 module.Integer["-"] = module.Integer.minus
 
 function module.Integer.star(self,arg)
-	return self * arg
+	return self * (-(-arg))
 end
 module.Integer["*"] = module.Integer.star
 
 function module.Integer.slash(self,arg)
-	return self / arg
+	return math.floor( self / (-(-arg)) )
 end
 module.Integer["/"] = module.Integer.slash
 
 function module.Integer.slashslash(self,arg)
-	return math.floor(self / arg)
+	return _dbl( self / (-(-arg)) )
 end
 module.Integer["//"] = module.Integer.slashslash
 
 function module.Integer.percent(self,arg)
+	arg = (-(-arg))
 	local res = self % arg
 	if res ~= 0 and ( res < 0 ) ~= ( arg < 0) then 
         res = res + arg
@@ -355,61 +365,61 @@ end
 module.Integer["%"] = module.Integer.percent
 
 function module.Integer.rem(self,arg)
-	return self % arg
+	return self % (-(-arg))
 end
 module.Integer["rem:"] = module.Integer.rem
 
 function module.Integer.ampers(self,arg)
-	return bit.band(self,arg)
+	return bit.band(self,(-(-arg)))
 end
 module.Integer["&"] = module.Integer.ampers
 
 function module.Integer.bitXor_(self,arg)
-	return bit.xor(self,arg)
+	return bit.xor(self,(-(-arg)))
 end
 module.Integer["bitXor:"] = module.Integer.bitXor_
 
 function module.Integer.leftleft(self,arg)
-	return bit.lshift(self,arg)
+	return bit.lshift(self,(-(-arg)))
 end
 module.Integer["<<"] = module.Integer.leftleft
 
 function module.Integer.rightright(self,arg)
-	return bit.rshift(self,arg)
+	return bit.rshift(self,(-(-arg)))
 end
 module.Integer[">>>"] = module.Integer.rightright
 
-function module.Integer.sqrt(self,arg)
+function module.Integer.sqrt(self)
 	return math.sqrt(self)
 end
 
-function module.Integer.atRandom(self,arg)
+function module.Integer.atRandom(self)
 	return self * math.random()
 end
 
 function module.Integer.eq(self,arg)
-	return self == arg
+	return self == (-(-arg))
 end
 module.Integer["="] = module.Integer.eq
 
 function module.Integer.lt(self,arg)
-	return self < arg
+	return self < (-(-arg))
 end
 module.Integer["<"] = module.Integer.lt
 
-function module.Integer.asString(self,arg)
+function module.Integer.asString(self)
 	return _str(tostring(self))
 end
 
-function module.Integer.as32BitSignedValue(self,arg)
+function module.Integer.as32BitSignedValue(self)
 	return math.floor(self)
 end
 
-function module.Integer.as32BitUnsignedValue(self,arg)
+function module.Integer.as32BitUnsignedValue(self)
 	return bit.band(self,0xffffffff)
 end
 
-function module.Integer.fromString(self,arg)
+function module.Integer.fromString(self)
 	return tonumber(self)
 end
 module.Integer["^fromString:"] = module.Integer.fromString
@@ -417,28 +427,30 @@ module.Integer["^fromString:"] = module.Integer.fromString
 ---------- Double ---------------------
 module.Double = {}
 
+-- requires Double to implement the __unm meta method
+
 function module.Double.plus(self,arg)
-	return _dbl(self._dbl + arg._dbl)
+	return _dbl(self._dbl + (-(-arg)))
 end
 module.Double["+"] = module.Double.plus
 
 function module.Double.minus(self,arg)
-	return _dbl(self._dbl - arg._dbl)
+	return _dbl(self._dbl - (-(-arg)))
 end
 module.Double["-"] = module.Double.minus
 
 function module.Double.star(self,arg)
-	return _dbl(self._dbl * arg._dbl)
+	return _dbl(self._dbl * (-(-arg)))
 end
 module.Double["*"] = module.Double.star
 
-function module.Double.slash(self,arg)
-	return _dbl(self._dbl / arg._dbl)
+function module.Double.slashslash(self,arg)
+	return _dbl(self._dbl / (-(-arg)))
 end
-module.Double["//"] = module.Double.slash
+module.Double["//"] = module.Double.slashslash
 
 function module.Double.percent(self,arg)
-	return _dbl(self._dbl % arg._dbl)
+	return _dbl(self._dbl % (-(-arg)))
 end
 module.Double["%"] = module.Double.percent
 
@@ -468,7 +480,7 @@ end
 module.Double["="] = module.Double.eq
 
 function module.Double.lt(self,arg)
-	return self._dbl < arg._dbl
+	return self._dbl < (-(-arg))
 end
 module.Double["<"] = module.Double.lt
 
