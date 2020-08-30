@@ -108,4 +108,9 @@ Benchmark: FieldLoop
    AVERAGE: 1074 ms
 
 Summed Average Runtime: 1074 ms
+Total average: 506
+Total geomean: 423
+Total median: 364
+Total sum: 8604
+
 

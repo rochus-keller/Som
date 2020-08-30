@@ -33,12 +33,30 @@ static const char* s_luaKeywords[] = {
 };
 static QSet<const char*> s_check;
 
-static QByteArray escape( const QByteArray& name )
+static QByteArray prefix( const QByteArray& name )
 {
     if( s_check.contains(name.constData() ) )
         return "_" + name;
     else
         return name;
+}
+
+/* Lua:
+ '\a' (bell), '\b' (backspace), '\f' (form feed), '\n' (newline), '\r' (carriage return),
+'\t' (horizontal tab), '\v' (vertical tab), '\\' (backslash), '\"' (quotation mark [double quote]),
+and '\'' (apostrophe [single quote]). Moreover, a backslash followed by a real newline results in a
+newline in the string. A character in a string can also be specified by its numerical value using the
+escape sequence \ddd, where ddd is a sequence of up to three decimal digits. (Note that if a numerical
+escape is to be followed by a digit, it must be expressed using exactly three digits.) Strings in Lua
+can contain any 8-bit value, including embedded zeros, which can be specified as '\0'.
+
+-> rather similar to SOM except embedded "
+ */
+
+static QByteArray escape( QByteArray str )
+{
+    str.replace('"', "\\\"" );
+    return str;
 }
 
 struct LuaTranspilerVisitor : public Ast::Visitor
@@ -77,14 +95,14 @@ struct LuaTranspilerVisitor : public Ast::Visitor
 
     virtual void visit( ArrayLiteral* a )
     {
-        out << "{ ";
+        out << "_lit({ ";
         for( int i = 0; i < a->d_elements.size(); i++ )
         {
             if( i != 0 )
                 out << ", ";
-            a->d_elements[i]->accept(this); // TODO: index
+            a->d_elements[i]->accept(this);
         }
-        out << " }";
+        out << " })";
     }
 
     virtual void visit( Variable* v )
@@ -99,7 +117,7 @@ struct LuaTranspilerVisitor : public Ast::Visitor
             break;
         case Variable::Argument:
         case Variable::Temporary:
-            out << "local " << escape(v->d_name);
+            out << "local " << prefix(v->d_name);
             break;
         }
     }
@@ -121,7 +139,7 @@ struct LuaTranspilerVisitor : public Ast::Visitor
             if( m->d_vars[i]->d_kind != Ast::Variable::Argument )
                 break;
             out << ",";
-            out << escape(m->d_vars[i]->d_name);
+            out << prefix(m->d_vars[i]->d_name);
             i++;
         }
         out << ")" << endl;
@@ -134,7 +152,7 @@ struct LuaTranspilerVisitor : public Ast::Visitor
         }
         while( i < m->d_vars.size() )
         {
-            out << ws() << "local " << escape(m->d_vars[i]->d_name) << endl;
+            out << ws() << "local " << prefix(m->d_vars[i]->d_name) << endl;
             i++;
         }
 
@@ -173,14 +191,14 @@ struct LuaTranspilerVisitor : public Ast::Visitor
                 break;
             if( i != 0 )
                 out << ",";
-            out << escape(b->d_func->d_vars[i]->d_name);
+            out << prefix(b->d_func->d_vars[i]->d_name);
             i++;
         }
         out << ")" << endl;
         level++;
         while( i < b->d_func->d_vars.size() )
         {
-            out << ws() << "local " << escape(b->d_func->d_vars[i]->d_name) << endl;
+            out << ws() << "local " << prefix(b->d_func->d_vars[i]->d_name) << endl;
             i++;
         }
         for( i = 0; i < b->d_func->d_body.size(); i++ )
@@ -269,12 +287,15 @@ struct LuaTranspilerVisitor : public Ast::Visitor
 
     virtual void visit( Char* c )
     {
-        out << "_str(\"" << c->d_ch << "\")"; // TODO: escapes
+        out << "_str(\"" << escape(QByteArray(1,c->d_ch)) << "\")";
     }
 
     virtual void visit( String* s )
     {
-        out << "_str(\"" << s->d_str << "\")"; // TODO: escapes
+        if( s->d_str.contains('\n') )
+            out << "_str([[" << escape(s->d_str) << "]])";
+        else
+            out << "_str(\"" << escape(s->d_str) << "\")";
     }
 
     virtual void visit( Number* n )
@@ -314,10 +335,10 @@ struct LuaTranspilerVisitor : public Ast::Visitor
                         break;
                     case Variable::Argument:
                     case Variable::Temporary:
-                        out << escape(v->d_name);
+                        out << prefix(v->d_name);
                         break;
                     case Variable::Global:
-                        out << "_cl(\"" << escape(v->d_name) << "\")";
+                        out << "_cl(\"" << prefix(v->d_name) << "\")";
                         break;
                     }
                 }
@@ -329,7 +350,7 @@ struct LuaTranspilerVisitor : public Ast::Visitor
                 }
                 break;
             case Thing::T_Class:
-                out << escape(i->d_ident);
+                out << prefix(i->d_ident);
                 break;
             default:
                 Q_ASSERT( false );
@@ -374,7 +395,7 @@ QByteArray LuaTranspiler::map(const QByteArray& in, quint8 patternType)
     {
     case Ast::NoPattern:
     case Ast::UnaryPattern:
-        return escape(name);
+        return prefix(name);
     case Ast::KeywordPattern:
         name.replace(':','_');
         return name;

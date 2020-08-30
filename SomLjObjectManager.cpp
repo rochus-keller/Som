@@ -57,7 +57,7 @@ using namespace Som::Ast;
     true, false and nil are represented by Lua values with metatable pointing to the appropriate SOM class
     SOM Integer is represented by Lua number with metaclass pointing to Integer class
 
-    Internal names: _primitives, _name, _super, _class, _meta
+    Internal names: _primitives, _name, _super, _class, _meta, _fields
   */
 /*
     TODO:
@@ -324,6 +324,8 @@ bool LjObjectManager::load(const QString& file, const QStringList& paths)
     getOrLoadClass("Integer");
     getOrLoadClass("Double");
     getOrLoadClass("Array");
+    getOrLoadClass("Method");
+    getOrLoadClass("Primitive");
 
     // We have to load an parse all classes provided in the path; otherwise we would have to detect
     // a missing class at runtime and then compile it
@@ -348,7 +350,8 @@ bool LjObjectManager::load(const QString& file, const QStringList& paths)
     if( d_mainClass->findMethod( Lexer::getSymbol("run") ) == 0 )
         run += "_";
     if( !d_lua->executeCmd( "function runSom() " + d_mainClass->d_name + "._class:" +
-                            run + "(_primitives._inst(Array)) end") )
+                            run + "(_primitives._inst(Array):at_put_(1,_primitives._newString(\"" +
+                            d_mainClass->d_loc.d_source.toUtf8()+ "\"))) end") )
         d_errors += d_lua->getLastError();
 
     return d_errors.isEmpty();
@@ -599,6 +602,9 @@ bool LjObjectManager::instantiateClasses()
         lua_pop(L,2);
 
         d_lua->executeCmd("Double._class.__unm = function(op) return -op._dbl end");
+        d_lua->executeCmd("String._class.__unm = function(op) return 0/0 end"); // 0/0 gives nan in Lua
+        d_lua->executeCmd("Symbol._class.__unm = function(op) return 0/0 end");
+
     }
 
     for( int i = oldInstantiated; i < d_loadingOrder.size(); i++ )
@@ -818,6 +824,7 @@ bool LjObjectManager::compileMethods(Ast::Class* cls)
     ts << "local _str = _primitives._newString" << endl;
     ts << "local _sym = _primitives._newSymbol" << endl;
     ts << "local _dbl = _primitives._newDouble" << endl;
+    ts << "local _lit = _primitives._newLit" << endl;
     ts << "local _cl = _primitives._checkLoad" << endl << endl;
 
     for( int i = 0; i < cls->d_methods.size(); i++ )

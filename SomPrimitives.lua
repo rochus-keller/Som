@@ -46,7 +46,7 @@ end
 local _str = module._newString
 
 function module._newSymbol(str)
-	local t = { _sym = str }
+	local t = { _str = str }
 	setmetatable(t,Symbol._class)
 	return t
 end
@@ -63,6 +63,12 @@ function module._inst( cls )
 	local t = {}
 	setmetatable(t,cls._class)
 	return t;
+end
+local _inst = module._inst
+
+function module._newLit(a)
+	setmetatable(a,Array._class)
+	return a
 end
 
 function module._checkLoad(name)
@@ -105,22 +111,22 @@ function module.Object.halt(self)
 end
 
 function module.Object.perform_(self,aSymbol)
-	return self[aSymbol._sym]()
+	return self[aSymbol._str](self)
 end
 module.Object["perform:"] = module.Object.perform_
 
 function module.Object.perform_withArguments_(self,aSymbol,args)
-	return self[aSymbol._sym](unpack(args)) 
+	return self[aSymbol._str](self,unpack(args)) 
 end
 module.Object["perform:withArguments:"] = module.Object.perform_withArguments_
 
 function module.Object.perform_inSuperclass_(self,aSymbol,cls)
-	return cls[aSymbol._sym]()
+	return cls[aSymbol._str](self)
 end
 module.Object["perform:inSuperclass:"] = module.Object.perform_inSuperclass_
 
 function module.Object.perform_withArguments_inSuperclass_(self,aSymbol,args,cls)
-	return cls[aSymbol._sym](unpack(args)) 
+	return cls[aSymbol._str](self,unpack(args)) 
 end
 module.Object["perform:withArguments:inSuperclass:"] = module.Object.perform_withArguments_inSuperclass_
 
@@ -149,9 +155,7 @@ function module.Class.name(self)
 end
 
 function module.Class.new(self)
-	local t = {}
-	setmetatable(t,self._class)
-	return t
+	return _inst(self)
 end
 
 function module.Class.superclass(self)
@@ -159,8 +163,7 @@ function module.Class.superclass(self)
 end
 
 function module.Class.fields(self)
-	local t = {}
-	setmetatable(t,Array._class)
+	local t = _inst(Array)
 	local f = self._class._fields
 	for i=1,#f do
 		t[i] = _sym(f[i])
@@ -169,15 +172,36 @@ function module.Class.fields(self)
 end
 
 function module.Class.methods(self)
-	local t = {}
-	setmetatable(t,Array._class)
+	local a = _inst(Array)
+	local i = 1
 	for k, v in pairs(self._class) do 
 		if type(k) == "string" and type(v) == "function" then
-			t[k] = v
+			local m = _inst(Method)
+			m._f = v
+			m._s = k
+			m._h = self
+			a[i] = m
+			i = i + 1
 		end
 	end
-	return t
+	return a
 end
+
+---------- Method ---------------------
+module.Method = {}
+
+function module.Method.signature(self)
+	return _sym(self._s)
+end
+
+function module.Method.holder(self)
+	return self._h
+end
+
+function module.Method.invokeOn_with_(self,obj,args)
+	return self._f(obj,unpack(args))
+end
+module.Method["invokeOn:with:"] = module.Method.invokeOn_with_
 
 ---------- String ---------------------
 module.String = {}
@@ -189,7 +213,7 @@ end
 module.String ["concatenate:"] = module.String.concatenate_
 
 function module.String.asSymbol(self)
-	local t = { _sym = self._str }
+	local t = { _str = self._str }
 	setmetatable( t, Symbol._class )
 	return t
 end
@@ -230,7 +254,7 @@ module.String["primSubstringFrom:to:"] = module.String.primSubstringFrom_to_
 module.Symbol = {}
 
 function module.Symbol.asString(self)
-	local t = { _str = self._sym }
+	local t = { _str = self._str }
 	setmetatable( t, String._class )
 	return t
 end
@@ -540,10 +564,13 @@ module.Boolean["and:"] = module.Boolean._and
 
 --------------- Block --------------------
 module.Block = {}
+module.Block1 = {}
 
 function module.Block.value(self)
 	return self._f() -- no ':' here!
 end
+
+module.Block1.value = module.Block.value
 
 function module.Block.value_(self,argument)
 	return self._f(argument)

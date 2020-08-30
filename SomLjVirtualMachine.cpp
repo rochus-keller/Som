@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Som");
     a.setApplicationName("SOM on LuaJIT");
-    a.setApplicationVersion("0.2");
+    a.setApplicationVersion("0.3");
     a.setStyle("Fusion");
 
     QString somFile;

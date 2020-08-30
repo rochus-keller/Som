@@ -115,3 +115,9 @@ Benchmark: FieldLoop
 Summed Average Runtime: 658 ms
 Time spent in GC: [0.932000] msec
 
+Total average:	201
+Total geomean:	181
+Total median:	167
+Total sum:	3425
+
+

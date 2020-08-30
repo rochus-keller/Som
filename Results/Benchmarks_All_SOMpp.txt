@@ -115,3 +115,9 @@ Summed Average Runtime: 373 ms
 Time spent in GC: [0.352000] msec
 
 Total runtime by stop watch 74 secs
+Total average: 110
+Total geomean: 99
+Total median: 91
+Total sum: 1874
+
+
