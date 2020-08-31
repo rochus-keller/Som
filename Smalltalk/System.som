@@ -86,6 +86,8 @@ System = (
     "Force Garbage Collection"
     fullGC = primitive
     
+    TRAP = primitive "RK addition"
+    
     ----------------------------------
     
     "Allocation"

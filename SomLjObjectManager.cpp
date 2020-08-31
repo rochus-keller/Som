@@ -173,6 +173,20 @@ struct LjObjectManager::ResolveIdents : public Visitor
         a->d_lhs->accept(this);
         inAssig = false;
         a->d_rhs->accept(this);
+        if( a->d_lhs->keyword() )
+            mdl->error( a->d_lhs->d_loc, "cannot assign to keyword" );
+        switch( a->d_rhs->keyword() )
+        {
+        case Expression::_super:
+            mdl->error( a->d_lhs->d_loc, "cannot assign 'super' to variable" );
+            // NOTE: SOM would allow this, but it is only used in SuperTest.som, even if without necessity
+            break;
+        case Expression::_primitive:
+            mdl->error( a->d_lhs->d_loc, "cannot assign 'primitive' to variable" );
+            break;
+        default:
+            break;
+        }
     }
     void visit( Ident* i )
     {
@@ -315,8 +329,8 @@ bool LjObjectManager::load(const QString& file, const QStringList& paths)
     getOrLoadClass("Class");
     getOrLoadClass("System");
     getOrLoadClass("Boolean");
-    getOrLoadClass("True"); // not used
-    getOrLoadClass("False"); // not used
+    getOrLoadClass("True");
+    getOrLoadClass("False");
     getOrLoadClass("Nil");
     getOrLoadClass("Block");
     getOrLoadClass("String");
@@ -600,11 +614,6 @@ bool LjObjectManager::instantiateClasses()
         Q_ASSERT( !lua_isnil( L, -1 ) );
         lua_setmetatable(L,-3);
         lua_pop(L,2);
-
-        d_lua->executeCmd("Double._class.__unm = function(op) return -op._dbl end");
-        d_lua->executeCmd("String._class.__unm = function(op) return 0/0 end"); // 0/0 gives nan in Lua
-        d_lua->executeCmd("Symbol._class.__unm = function(op) return 0/0 end");
-
     }
 
     for( int i = oldInstantiated; i < d_loadingOrder.size(); i++ )
@@ -826,6 +835,8 @@ bool LjObjectManager::compileMethods(Ast::Class* cls)
     ts << "local _dbl = _primitives._newDouble" << endl;
     ts << "local _lit = _primitives._newLit" << endl;
     ts << "local _cl = _primitives._checkLoad" << endl << endl;
+
+    ts << "class.__unm = _primitives.__unm" << endl << endl; // each instance becomes convertible to a number
 
     for( int i = 0; i < cls->d_methods.size(); i++ )
     {

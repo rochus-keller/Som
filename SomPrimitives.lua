@@ -36,6 +36,9 @@ ffi.cdef [[
 	int Som_isLetters( const char* str );
 	int Som_isDigits( const char* str );
 	int Som_usecs();
+	int Som_toInt32(double d);
+	unsigned int Som_toUInt32(double d);
+	int Som_rem(int l, int r);
 ]]
 
 function module._newString(str)
@@ -75,14 +78,25 @@ function module._checkLoad(name)
 	return _G[name] -- TODO
 end
 
+function module.__unm(op) 
+	return -( op._dbl or 0/0 ) -- 0/0 gives NaN in Lua
+end
+
 ---------- Object -------------------
 module.Object = {}
 
 function module.Object.class(self)
-	if self._meta then
-		return self._meta -- self is a class
+	local t = getmetatable(self) -- self is an instance
+	if t == Boolean._class then
+		if self then
+			return True
+		else
+			return False
+		end
+	elseif t._meta then
+		return t._meta
 	else
-		return getmetatable(self) -- self is an instance
+		return t
 	end
 end
 
@@ -99,6 +113,7 @@ function module.Object.eqeq(self,other)
 		return true
 	end
 	-- TODO
+	return false
 end
 module.Object["=="] = module.Object.eqeq
 
@@ -121,7 +136,7 @@ end
 module.Object["perform:withArguments:"] = module.Object.perform_withArguments_
 
 function module.Object.perform_inSuperclass_(self,aSymbol,cls)
-	return cls[aSymbol._str](self)
+	return cls._class[aSymbol._str](self)
 end
 module.Object["perform:inSuperclass:"] = module.Object.perform_inSuperclass_
 
@@ -294,18 +309,18 @@ end
 module.System["printString:"] = module.System.printString
 
 function module.System.global_(self,name)
-	return _G[name]
+	return _G[name._str]
 end
 module.System["global:"] = module.System.global_
 
 function module.System.global_put_(self,name,value)
-	_G[name] = value
+	_G[name._str] = value
 	return self
 end
 module.System["global:put:"] = module.System.global_put_
 
 function module.System.hasGlobal_(self,name)
-	return _G[name] ~= nil
+	return _G[name._str] ~= nil
 end
 module.System["hasGlobal:"] = module.System.hasGlobal_
 
@@ -317,8 +332,10 @@ end
 module.System["load:"] = module.System.load_
 
 function module.System.exit_(self,err)
-	-- ABORT()
-	TRAP()
+	if err ~= 0 then
+		print("System>>exit: "..tostring(err))
+	end
+	ABORT()
 end
 module.System["exit:"] = module.System.exit_
 
@@ -332,23 +349,23 @@ function module.System.printNewline(self)
 	io.stdout:write("\n")
 	return self
 end
-module.System["printNewline"] = module.System.printNewline
 
 function module.System.time(self)
 	return C.Som_usecs() / 1000 -- milliseconds since start
 end
-module.System["time"] = module.System.time
 
 function module.System.ticks(self)
 	return C.Som_usecs() -- microseconds since start
 end
-module.System["ticks"] = module.System.ticks
 
 function module.System.fullGC(self)
 	collectgarbage()
-	return self
+	return true
 end
-module.System["fullGC"] = module.System.fullGC
+
+function module.System.TRAP(self)
+	TRAP()
+end
 
 ---------- Integer --------------------
 module.Integer = {}
@@ -379,17 +396,19 @@ end
 module.Integer["//"] = module.Integer.slashslash
 
 function module.Integer.percent(self,arg)
-	arg = (-(-arg))
-	local res = self % arg
-	if res ~= 0 and ( res < 0 ) ~= ( arg < 0) then 
-        res = res + arg
-    end
+	local l = self
+	local r = (-(-arg))
+	local res = l % r
+	-- Lua does this already:
+	-- if res ~= 0 and ( ( res < 0 ) ~= ( r < 0) ) then 
+    --    res = res + r
+    -- end
 	return res
 end
 module.Integer["%"] = module.Integer.percent
 
 function module.Integer.rem(self,arg)
-	return self % (-(-arg))
+	return C.Som_rem( self, (-(-arg)) )
 end
 module.Integer["rem:"] = module.Integer.rem
 
@@ -399,12 +418,19 @@ end
 module.Integer["&"] = module.Integer.ampers
 
 function module.Integer.bitXor_(self,arg)
-	return bit.xor(self,(-(-arg)))
+	return bit.bxor(self,(-(-arg)))
 end
 module.Integer["bitXor:"] = module.Integer.bitXor_
 
+-- NOTE: Only the lower 5 bits of the shift count are used (reduces to the range [0..31]). 
 function module.Integer.leftleft(self,arg)
-	return bit.lshift(self,(-(-arg)))
+	local off = (-(-arg))
+	if off > 31 then
+		local tmp = bit.lshift(self,31)
+		return bit.lshift(tmp,off-31)
+	else
+		return bit.lshift(self,off)
+	end
 end
 module.Integer["<<"] = module.Integer.leftleft
 
@@ -436,15 +462,15 @@ function module.Integer.asString(self)
 end
 
 function module.Integer.as32BitSignedValue(self)
-	return math.floor(self)
+	return C.Som_toInt32(self)
 end
 
 function module.Integer.as32BitUnsignedValue(self)
-	return bit.band(self,0xffffffff)
+	return C.Som_toUInt32(self)
 end
 
-function module.Integer.fromString(self)
-	return tonumber(self)
+function module.Integer.fromString(self,aString)
+	return tonumber(aString._str)
 end
 module.Integer["^fromString:"] = module.Integer.fromString
 
@@ -487,7 +513,13 @@ function module.Double.round(self)
 end
 
 function module.Double.asInteger(self)
-	return math.floor(self._dbl)
+	local tmp = self._dbl
+	if tmp >= 0 then
+		tmp = math.floor(tmp)
+	else
+		tmp = math.ceil(tmp)
+	end
+	return tmp
 end
 
 function module.Double.cos(self)
@@ -499,7 +531,7 @@ function module.Double.sin(self)
 end
 
 function module.Double.eq(self,arg)
-	return self._dbl == arg._dbl
+	return self._dbl == (-(-arg))
 end
 module.Double["="] = module.Double.eq
 

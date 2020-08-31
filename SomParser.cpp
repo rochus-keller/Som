@@ -641,20 +641,7 @@ Ast::Ref<Expression> Parser::parseAssig(Ast::Function* scope,Parser::TokStream& 
     Ref<Assig> a = new Assig();
     a->d_loc = t.d_loc;
     a->d_lhs = new Ident(t.d_val,t.d_loc, scope->getMethod() );
-    ts.next(); // eat assig
-#if 0 // no concatenated assigns in SOM (presumably)
-    while( ts.peek(2).d_type == Lexer::Assig )
-    {
-        t = ts.next();
-        if( t.d_type != Lexer::Ident )
-        {
-            error("can only assign to idents", t );
-            return a.data();
-        }
-        a->d_lhs << new Ident(t.d_val,t.d_loc, scope->getMethod() );
-        ts.next(); // eat assig
-    }
-#endif
+    t = ts.next(); // eat assig
     a->d_rhs = parseExpression(scope, ts);
     return a.data();
 }

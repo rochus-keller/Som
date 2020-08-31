@@ -81,5 +81,20 @@ DllExport int Som_usecs()
     return t.nsecsElapsed() / 1000;
 }
 
+DllExport int Som_toInt32(double d)
+{
+    return d;
+}
+
+DllExport unsigned int Som_toUInt32(double d)
+{
+    const int tmp = d;
+    return tmp;
+}
+
+DllExport int Som_rem(int l, int r)
+{
+    return l % r;
+}
 
 }

@@ -102,7 +102,7 @@ namespace Ast
         Named* d_resolved;
         Method* d_inMethod;
         quint8 d_use;
-        quint8 d_keyword;
+        quint8 d_keyword; // Expression::Keyword
 
         Ident( const QByteArray& ident, const Loc& pos, Method* f = 0 ):d_ident(ident),d_resolved(0),
             d_use(Undefined),d_inMethod(f),d_keyword(None) { d_loc = pos; }

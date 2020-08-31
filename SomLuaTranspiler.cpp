@@ -56,6 +56,13 @@ can contain any 8-bit value, including embedded zeros, which can be specified as
 static QByteArray escape( QByteArray str )
 {
     str.replace('"', "\\\"" );
+    str.replace('\n', "\\n");
+    str.replace('\r', "\\r");
+    str.replace('\b', "\\b");
+    str.replace('\f', "\\f");
+    str.replace('\t', "\\t");
+    str.replace('\v', "\\v");
+    str.replace('\r', "\\r");
     return str;
 }
 
@@ -292,10 +299,7 @@ struct LuaTranspilerVisitor : public Ast::Visitor
 
     virtual void visit( String* s )
     {
-        if( s->d_str.contains('\n') )
-            out << "_str([[" << escape(s->d_str) << "]])";
-        else
-            out << "_str(\"" << escape(s->d_str) << "\")";
+        out << "_str(\"" << escape(s->d_str) << "\")"; // [[]] gives wrong string length if s is only a \n
     }
 
     virtual void visit( Number* n )
