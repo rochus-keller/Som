@@ -1,5 +1,5 @@
-#ifndef SOMLJVIRTUALMACHINE_H
-#define SOMLJVIRTUALMACHINE_H
+#ifndef SOMLJBCCOMPILER_H
+#define SOMLJBCCOMPILER_H
 
 /*
 * Copyright 2020 Rochus Keller <mailto:me@rochus-keller.ch>
@@ -20,35 +20,20 @@
 * http://www.gnu.org/copyleft/gpl.html.
 */
 
-#include <QObject>
-
-namespace Lua
-{
-    class Engine2;
-}
+#include <Som/SomAst.h>
+#include <LjTools/LuaJitComposer.h>
 
 namespace Som
 {
-    class LjObjectManager;
 
-    class LjVirtualMachine : public QObject
+    class LjbcCompiler
     {
-        Q_OBJECT
     public:
-        explicit LjVirtualMachine(QObject *parent = 0);
-        bool load(const QString& file, const QString& paths = QString() );
-        void run(bool useJit = true, bool useProfiler = false);
-        Lua::Engine2* getLua() const { return d_lua; }
-        QStringList getLuaFiles() const;
-        QByteArrayList getClassNames() const;
-        void setGenLua( bool );
-        LjObjectManager* getOm() const { return d_om;}
-    protected slots:
-        void onNotify( int messageType, QByteArray val1, int val2 );
+        static bool translate( Lua::JitComposer&, Ast::Method* );
+
     private:
-        Lua::Engine2* d_lua;
-        LjObjectManager* d_om;
+        LjbcCompiler();
     };
 }
 
-#endif // SOMLJVIRTUALMACHINE_H
+#endif // SOMLJBCCOMPILER_H

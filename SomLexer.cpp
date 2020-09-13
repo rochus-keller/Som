@@ -405,6 +405,8 @@ Lexer::Token Lexer::number(char ch)
         const char ch2 = peekChar(2);
         if( ::isspace(ch2) || ch2 == ']' || ch2 == ')' || ch2 == 0 )
             return commit(Integer,str);
+        if( kind != Default )
+            return commit(Error,"invalid number format");
         real = true;
         str += get();
         ch = peekChar();
@@ -421,6 +423,8 @@ Lexer::Token Lexer::number(char ch)
     }
     if( ch == 'e' )
     {
+        if( kind != Default )
+            return commit(Error,"invalid number format");
         real = true;
         str += get();
         ch = peekChar();

@@ -24,6 +24,8 @@
 using namespace Som;
 using namespace Som::Ast;
 
+#define _USE_PCALL_
+
 static const char* s_luaKeywords[] = {
     "and",       "break",     "do",        "else",      "elseif",
          "end",       "false",     "for",       "function",  "if",
@@ -53,7 +55,7 @@ can contain any 8-bit value, including embedded zeros, which can be specified as
 -> rather similar to SOM except embedded "
  */
 
-static QByteArray escape( QByteArray str )
+static QByteArray _escape( QByteArray str )
 {
     str.replace('"', "\\\"" );
     str.replace('\n', "\\n");
@@ -151,12 +153,14 @@ struct LuaTranspilerVisitor : public Ast::Visitor
         }
         out << ")" << endl;
         level++;
+#ifdef _USE_PCALL_
         if( m->d_hasNonLocalReturn )
         {
             out << ws() << "local _nonLocal, _nlRes" << endl;
             out << ws() << "local _status, _pcallRes = pcall( function()" << endl;
             level++;
         }
+#endif
         while( i < m->d_vars.size() )
         {
             out << ws() << "local " << prefix(m->d_vars[i]->d_name) << endl;
@@ -168,10 +172,12 @@ struct LuaTranspilerVisitor : public Ast::Visitor
             out << ws();
             m->d_body[i]->accept( this );
             out << ";" << endl; // to avoid Lua "ambiguous syntax (function call x new statement)" error
-            if( i == m->d_body.size() - 1 && m->d_body[i]->getTag() != Thing::T_Return )
-                out << ws() << "return self" << endl;
         }
+        if( m->d_body.isEmpty() || m->d_body.last()->getTag() != Thing::T_Return )
+            out << ws() << "return self" << endl;
+
         level--;
+#ifdef _USE_PCALL_
         if( m->d_hasNonLocalReturn )
         {
             out << ws() << "end )" << endl;
@@ -180,6 +186,7 @@ struct LuaTranspilerVisitor : public Ast::Visitor
                 << "else error(_pcallRes) end" << endl;
             level--;
         }
+#endif
 
         out << ws() << "end" << endl << endl;
 
@@ -294,12 +301,12 @@ struct LuaTranspilerVisitor : public Ast::Visitor
 
     virtual void visit( Char* c )
     {
-        out << "_str(\"" << escape(QByteArray(1,c->d_ch)) << "\")";
+        out << "_str(\"" << _escape(QByteArray(1,c->d_ch)) << "\")";
     }
 
     virtual void visit( String* s )
     {
-        out << "_str(\"" << escape(s->d_str) << "\")"; // [[]] gives wrong string length if s is only a \n
+        out << "_str(\"" << _escape(s->d_str) << "\")"; // [[]] gives wrong string length if s is only a \n
     }
 
     virtual void visit( Number* n )
@@ -461,4 +468,9 @@ QByteArray LuaTranspiler::map(const QByteArray& in, quint8 patternType)
         }
     }
     return "_0" + name;
+}
+
+QByteArray LuaTranspiler::escape(const QByteArray& string)
+{
+    return _escape(string);
 }

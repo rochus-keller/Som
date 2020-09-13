@@ -161,7 +161,8 @@ bool Parser::readClassExpr()
 
     if( t.d_type != Lexer::Rpar )
         return error("expecting ')' at class end", t );
-    d_lex->next(); // eat ')'
+    t = d_lex->next(); // eat ')'
+    d_curClass->d_end = t.d_loc;
     return true;
 }
 
@@ -233,10 +234,18 @@ Ast::Ref<Method> Parser::readMethod(Class* c, bool classLevel )
     {
         Q_ASSERT( false );
     }
+
+    // helper variable so Blocks can refer to it
+    m->d_self = new Variable();
+    m->d_self->d_kind = Variable::Argument;
+    m->d_self->d_loc = m->d_loc;
+    m->d_self->d_name = Lexer::getSymbol("self");
+    m->d_self->d_owner = m.data();
+    m->d_varNames[m->d_self->d_name.constData()].append(m->d_self.data());
+
     Q_ASSERT( !m->d_pattern.isEmpty() );
     if( m->d_name.isEmpty() )
         m->d_name = Lexer::getSymbol( m->prettyName(false) );
-
 
     m->d_classLevel = classLevel;
 
@@ -259,7 +268,7 @@ Ast::Ref<Method> Parser::readMethod(Class* c, bool classLevel )
             return 0;
         }
         m->d_primitive = true;
-        m->d_endPos = t.d_loc.d_pos + t.d_loc.d_len;
+        m->d_end = t.d_loc;
     }else if( t.d_type == Lexer::Lpar )
     {
         int level = 0;
@@ -280,7 +289,7 @@ Ast::Ref<Method> Parser::readMethod(Class* c, bool classLevel )
             error("expecting ')'", t );
             return 0;
         }
-        m->d_endPos = t.d_loc.d_pos;
+        m->d_end = t.d_loc;
     }else
     {
         error( "expecting 'primitive' or '('", t );
@@ -660,8 +669,6 @@ Ast::Ref<Expression> Parser::parseReturn(Ast::Function* scope,Parser::TokStream&
 
 bool Parser::parseBlockBody(Function* block, Parser::TokStream& ts)
 {
-    // TODO: similar to parseMethodBody. Maybe unify?
-
     Lexer::Token t = ts.peek();
     bool hasParams = false;
     while( t.isValid() && t.d_type == Lexer::Colon )
@@ -731,7 +738,11 @@ bool Parser::parseBlockBody(Function* block, Parser::TokStream& ts)
             break;
         case Lexer::Rbrack:
             ts.next();
-            return true; // end of block
+            block->d_end = t.d_loc;
+            if( block->d_body.isEmpty() )
+                return error("empty block bodies not supported",t);
+            else
+                return true; // end of block
         default:
             return error("expecting statement", ts.peek() );
         }

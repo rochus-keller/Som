@@ -101,16 +101,6 @@ QByteArray Method::prettyName(bool withSpace) const
     return prettyName(d_pattern,d_patternType,withSpace);
 }
 
-Variable*Method::findVar(const QByteArray& name) const
-{
-    for( int i = 0; i < d_vars.size(); i++ )
-    {
-        if( d_vars[i]->d_name.constData() == name.constData() )
-            return d_vars[i].data();
-    }
-    return 0;
-}
-
 Class*Scope::getClass() const
 {
     if( getTag() == Thing::T_Class )
@@ -225,6 +215,17 @@ void Function::addVar(Variable* v)
     d_vars.append(v);
     v->d_owner = this;
     d_varNames[v->d_name.constData()].append(v);
+}
+
+int Function::getParamCount() const
+{
+    int res = 0;
+    for( int i = 0; i < d_vars.size(); i++ )
+    {
+        if( d_vars[i]->d_kind == Variable::Argument )
+            res++;
+    }
+    return res;
 }
 
 Method* Scope::getMethod() const
@@ -473,4 +474,18 @@ void Thing::dump(QTextStream& out)
     };
     V v(out);
     accept(&v);
+}
+
+
+QVariant Number::toNumber(bool* ok) const
+{
+    if( d_real )
+        return d_num.toDouble(ok);
+    const int r = d_num.indexOf('r');
+    if( r != -1 )
+    {
+        const int base = d_num.left(r).toInt();
+        return d_num.mid(r+1).toLongLong(ok, base );
+    }else
+        return d_num.toLongLong(ok);
 }

@@ -34,7 +34,9 @@ SOURCES += \
     SomLexer.cpp \
     SomParser.cpp \
     SomLuaTranspiler.cpp \
-    SomLjLibFfi.cpp
+    SomLjLibFfi.cpp \
+    SomLjbcCompiler.cpp \
+    ../LjTools/LjBcDebugger.cpp
 
 HEADERS  += \ 
     SomLjVirtualMachine.h \
@@ -42,7 +44,9 @@ HEADERS  += \
     SomAst.h \
     SomLexer.h \
     SomParser.h \
-    SomLuaTranspiler.h
+    SomLuaTranspiler.h \
+    SomLjbcCompiler.h \
+    ../LjTools/LjBcDebugger.h
 
 DEFINES += LUAIDE_EMBEDDED
 include( ../LjTools/LuaIde.pri )
@@ -72,6 +76,7 @@ CONFIG(debug, debug|release) {
 
 !win32 {
     QMAKE_CXXFLAGS += -Wno-reorder -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable
+    QMAKE_CXXFLAGS += -fno-stack-protector # see https://stackoverflow.com/questions/1345670/stack-smashing-detected
 }
 
 RESOURCES += \

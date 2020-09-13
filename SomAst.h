@@ -53,24 +53,28 @@ namespace Ast
         virtual void visit( Class* ) {}
         virtual void visit( Method* ) {}
         virtual void visit( Block* ) {}
-        virtual void visit( Cascade* ) {}
         virtual void visit( Assig* ) {}
         virtual void visit( Char* ) {}
         virtual void visit( String* ) {}
         virtual void visit( Number* ) {}
         virtual void visit( Symbol* ) {}
         virtual void visit( Ident* ) {}
+
+        // not used:
+        virtual void visit( Cascade* ) {}
         virtual void visit( Selector* ) {}
     };
 
     struct Loc
     {
+        enum { ROW_BIT_LEN = 19, COL_BIT_LEN = 32 - ROW_BIT_LEN - 1, MSB = 0x80000000 };
         quint32 d_pos;
         quint32 d_line;
         quint16 d_col;
         quint16 d_len;
         QString d_source;
         Loc():d_pos(0),d_line(0),d_col(0),d_len(0){}
+        quint32 packed() const { return ( d_line << COL_BIT_LEN ) | d_col | MSB; }
     };
 
     struct Thing : public QSharedData
@@ -138,6 +142,7 @@ namespace Ast
         int getTag() const { return T_Number; }
         quint32 getLen() const { return d_num.size(); }
         void accept(Visitor* v) { v->visit(this); }
+        QVariant toNumber( bool* ok = 0 ) const;
     };
 
     struct String : public Expression
@@ -212,11 +217,13 @@ namespace Ast
         Scope* d_owner;
         Named():d_owner(0){}
         virtual bool classLevel() const { return false; }
+        virtual void markAsUpvalSource(Scope*) {}
     };
 
     struct Scope : public Named
     {
         QHash<const char*,QList<Named*> > d_varNames, d_methodNames;
+        Loc d_end;
 
         QList<Named*> findVars(const QByteArray& name, bool recursive = true ) const;
         QList<Named*> findMeths(const QByteArray& name, bool recursive = true ) const;
@@ -233,9 +240,17 @@ namespace Ast
     {
         QList< Ref<Variable> > d_vars;
         ExpList d_body;
+        bool d_upvalSource;
+        Function():d_upvalSource(false){}
         Variable* findVar( const QByteArray& ) const;
         int getTag() const { return T_Func; }
         void addVar(Variable*);
+        int getParamCount() const;
+        void markAsUpvalSource(Scope* scope)
+        {
+            if( scope != this )
+                d_upvalSource = true;
+        }
     };
 
     struct Block : public Expression
@@ -256,15 +271,14 @@ namespace Ast
         quint8 d_hasNonLocalReturn : 1;
         quint8 d_hasNonLocalReturnIfInlined : 1;
         QByteArrayList d_pattern; // compact form in d_name
-        quint32 d_endPos;
         QByteArray d_category;
         ExpList d_helper;
+        Ref<Variable> d_self;
 
-        Method():d_patternType(NoPattern),d_classLevel(false),d_endPos(0),d_primitive(false),
+        Method():d_patternType(NoPattern),d_classLevel(false),d_primitive(false),
             d_hasNonLocalReturn(false),d_hasNonLocalReturnIfInlined(false){}
         static QByteArray prettyName(const QByteArrayList& pattern, quint8 kind, bool withSpace = true );
         QByteArray prettyName(bool withSpace = true) const;
-        Variable* findVar( const QByteArray& ) const;
         int getTag() const { return T_Method; }
         Expression* findByPos( quint32 ) const;
         void accept(Visitor* v) { v->visit(this); }

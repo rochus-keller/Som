@@ -558,7 +558,7 @@ end
 
 function module.Boolean.ifTrue(self,block)
 	if self then
-		block:value()
+		return block:value()
 	end
 end
 
@@ -566,7 +566,7 @@ module.Boolean["ifTrue:"] = module.Boolean.ifTrue
 
 function module.Boolean.ifFalse(self,block)
 	if not self then
-		block:value()
+		return block:value()
 	end
 end
 module.Boolean["ifFalse:"] = module.Boolean.ifFalse
@@ -600,24 +600,29 @@ module.Block1 = {}
 
 function module.Block.value(self)
 	return self._f() -- no ':' here!
-end
+	-- we want to access to the self of the enclosing method
+end 
 
 module.Block1.value = module.Block.value
 
 function module.Block.value_(self,argument)
-	return self._f(argument)
+	return self._f(argument) -- intentionally no self!
 end
 module.Block["value:"] = module.Block.value_
 
 function module.Block.value_with_(self,arg1,arg2)
-	return self._f(arg1,arg2)
+	return self._f(arg1,arg2) -- intentionally no self!
 end
 module.Block["value:with:"] = module.Block.value_with_
 
 function module.Block.whileTrue_(self,block)
 	while self:value() do
-		block:value()
+		local res, stat = block:value()
+		if stat then
+			return res, stat
+		end
 	end
+	return self
 end
 module.Block["whileTrue:"] = module.Block.whileTrue_
 

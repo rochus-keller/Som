@@ -32,6 +32,7 @@ namespace Som
         static bool transpile( QTextStream&, Ast::Method* );
         static QByteArray map(QByteArray name );
         static QByteArray map(const QByteArray& name, quint8 patternType );
+        static QByteArray escape( const QByteArray& string );
     private:
         LuaTranspiler();
     };

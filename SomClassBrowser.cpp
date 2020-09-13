@@ -111,7 +111,7 @@ public:
                     for( int i = 0; i < ids.size(); i++ )
                     {
                         if( ids[i]->d_loc.d_pos >= d_that->d_curMethod->d_loc.d_pos &&
-                                ids[i]->d_loc.d_pos < d_that->d_curMethod->d_endPos )
+                                ids[i]->d_loc.d_pos < d_that->d_curMethod->d_end.d_pos )
                         {
                             cur.setPosition( offCorr( ids[i]->d_loc.d_pos - d_that->d_curMethod->d_loc.d_pos ) );
                             cur.setPosition( cur.position() + ids[i]->getLen(), QTextCursor::KeepAnchor );
@@ -120,7 +120,7 @@ public:
                         }
                     }
                     if( id->d_resolved && id->d_resolved->d_loc.d_pos >= d_that->d_curMethod->d_loc.d_pos &&
-                            id->d_resolved->d_loc.d_pos < d_that->d_curMethod->d_endPos )
+                            id->d_resolved->d_loc.d_pos < d_that->d_curMethod->d_end.d_pos )
                     {
                         cur.setPosition( offCorr( id->d_resolved->d_loc.d_pos - d_that->d_curMethod->d_loc.d_pos ) );
                         cur.setPosition( cur.position() + id->d_resolved->getLen(), QTextCursor::KeepAnchor );
@@ -679,7 +679,7 @@ void ClassBrowser::fillMethod()
                       .arg(QString(d_curMethod->prettyName()).toHtmlEscaped() ).arg( d_curMethod->d_classLevel ? "[c] " : "" ) );
 
     in.seek( d_curMethod->d_loc.d_pos );
-    QString str = QString::fromUtf8( in.read( d_curMethod->d_endPos - d_curMethod->d_loc.d_pos + 1 ) );
+    QString str = QString::fromUtf8( in.read( d_curMethod->d_end.d_pos - d_curMethod->d_loc.d_pos + 1 ) );
     d_code->setCode( str );
 }
 

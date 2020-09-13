@@ -22,6 +22,9 @@
 #include <LjTools/Engine2.h>
 #include <LjTools/LuaIde.h>
 #include <LjTools/LuaProject.h>
+#include <LjTools/Terminal2.h>
+#include <LjTools/LuaJitComposer.h>
+#include <LjTools/LjBcDebugger.h>
 #include <LuaJIT/src/lua.hpp>
 #include <QApplication>
 #include <QFileDialog>
@@ -217,6 +220,12 @@ LjVirtualMachine::LjVirtualMachine(QObject* parent) : QObject(parent)
 
     lua_pushcfunction( d_lua->getCtx(), hashOf );
     lua_setglobal( d_lua->getCtx(), "hashOf" );
+    lua_pushcfunction( d_lua->getCtx(), Engine2::TRAP );
+    lua_setglobal( d_lua->getCtx(), "TRAP" );
+    lua_pushcfunction( d_lua->getCtx(), Engine2::TRACE );
+    lua_setglobal( d_lua->getCtx(), "TRACE" );
+    lua_pushcfunction( d_lua->getCtx(), Engine2::ABORT );
+    lua_setglobal( d_lua->getCtx(), "ABORT" );
 
 #ifdef ST_SET_JIT_PARAMS_BY_LUA
     // works in principle, but the JIT runs about 5% slower than when directly set via lj_jit.h
@@ -259,7 +268,9 @@ void LjVirtualMachine::run(bool useJit, bool useProfiler)
 
 QStringList LjVirtualMachine::getLuaFiles() const
 {
-    QStringList res = d_om->getGenerated();
+    QStringList res;
+    for( int i = 0; i < d_om->getGenerated().size(); i++ )
+        res.append( d_om->getGenerated()[i].second );
     res.prepend( ":/SomPrimitives.lua" );
     return res;
 }
@@ -267,6 +278,11 @@ QStringList LjVirtualMachine::getLuaFiles() const
 QByteArrayList LjVirtualMachine::getClassNames() const
 {
     return d_om->getClassNames();
+}
+
+void LjVirtualMachine::setGenLua(bool on)
+{
+    d_om->setGenLua(on);
 }
 
 void LjVirtualMachine::onNotify(int messageType, QByteArray val1, int val2)
@@ -285,7 +301,12 @@ void LjVirtualMachine::onNotify(int messageType, QByteArray val1, int val2)
         std::cerr << std::flush;
         break;
     case Lua::Engine2::Error:
-        qCritical() << "ERR" << val1.trimmed().constData();
+        {
+            Engine2::ErrorMsg msg = Engine2::decodeRuntimeMessage(val1);
+            qCritical() << "ERR" << msg.d_source.constData() <<
+                           JitComposer::unpackRow2(msg.d_line) <<
+                        JitComposer::unpackCol2(msg.d_line) << msg.d_message.constData();
+        }
         break;
     }
 }
@@ -296,14 +317,17 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Som");
     a.setApplicationName("SOM on LuaJIT");
-    a.setApplicationVersion("0.4");
+    a.setApplicationVersion("0.5");
     a.setStyle("Fusion");
 
     QString somFile;
     QString somPaths;
     QString proFile;
     bool ide = false;
+    bool lua = false;
     bool useProfiler = false;
+    bool interactive = false;
+    bool debugger = false;
     bool useJit = true;
     const QStringList args = QCoreApplication::arguments();
     for( int i = 1; i < args.size(); i++ ) // arg 0 enthaelt Anwendungspfad
@@ -318,14 +342,25 @@ int main(int argc, char *argv[])
             out << "  -cp       paths to som files, separated by ':'" << endl;
             out << "            Note that path of som_file is automatically added and" << endl;
             out << "            the Smalltalk files are integrated in the executable" << endl;
-            out << "  -ide      start Lua IDE" << endl;
+            out << "  -ide      start Lua IDE (overrides -lua)" << endl;
+            out << "  -lua      generate Lua source code instead of bytecode" << endl;
+            out << "  -i        run script and start an interactive session" << endl;
+            out << "  -dbg      run script in the debugger (overrides -i)" << endl;
             out << "  -pro file open given project in LuaIDE" << endl;
             out << "  -nojit    switch off JIT" << endl;
             out << "  -stats    use LuaJIT profiler (if present)" << endl;
             out << "  -h        display this information" << endl;
             return 0;
         }else if( args[i] == "-ide" )
+        {
             ide = true;
+            lua = true;
+        }else if( args[i] == "-lua" )
+                    lua = true;
+        else if( args[i] == "-i" )
+                    interactive = true;
+        else if( args[i] == "-dbg" )
+                    debugger = true;
         else if( args[i] == "-nojit" )
                     useJit = false;
         else if( args[i] == "-stats" )
@@ -333,6 +368,7 @@ int main(int argc, char *argv[])
         else if( args[i] == "-pro" )
         {
             ide = true;
+            lua = true;
             if( i+1 >= args.size() )
             {
                 qCritical() << "error: invalid -pro option" << endl;
@@ -376,6 +412,7 @@ int main(int argc, char *argv[])
         if( somFile.isEmpty() )
             return 0;
     }
+    vm.setGenLua(lua);
     if( !vm.load(somFile, somPaths) )
         return -1;
 
@@ -397,10 +434,26 @@ int main(int argc, char *argv[])
             win.compile();
         }
         // vm.run(useJit,useProfiler);
-        a.exec();
+        return a.exec();
     }else
     {
-        vm.run(useJit,useProfiler);
-        return 0;
+        if( debugger )
+        {
+            BcDebugger win( vm.getLua() );
+            LjObjectManager::GeneratedFiles gf = vm.getOm()->getGenerated();
+            gf.prepend( qMakePair(QString(":/SomPrimitives.lua"),vm.getOm()->pathInDir("Lua", "SomPrimitives.lua") ) );
+            win.initializeFromFiles( gf, QFileInfo(somFile).absolutePath()+"/Lua", "runSom()" );
+            //vm.run(useJit,useProfiler);
+            return a.exec();
+        }else if( interactive )
+        {
+            Lua::Terminal2 t(0,vm.getLua());
+            t.show();
+            return a.exec();
+        }else
+        {
+            vm.run(useJit,useProfiler);
+            return 0;
+        }
     }
 }

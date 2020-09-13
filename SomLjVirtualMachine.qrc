@@ -29,5 +29,8 @@
         <file>Smalltalk/True.som</file>
         <file>Smalltalk/Vector.som</file>
         <file>SomPrimitives.lua</file>
+        <file>images/breakpoint.png</file>
+        <file>images/marker.png</file>
+        <file>images/break-marker.png</file>
     </qresource>
 </RCC>

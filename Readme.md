@@ -29,7 +29,9 @@ Here is a screenshot:
 
 ### A SOM to Lua transpiler with LuaJIT based VM
 
-This is currently an experimental implementation and work in progress. Hello.som, the Benchmarks package and most of the TestHarness tests work. The focus is not (yet) on performance, but on the most direct mapping from Smalltalk to Lua syntax constructs possible. There is no inlining yet. The object model mapping is described in the comments of SomLjObjectManager.cpp. Starting from the main SOM file (provided by command line) all explicitly referenced classes are loaded at compile time. 
+This is work in progress. Hello.som, the Benchmarks package and most of the TestHarness tests work. The focus is not (yet) on performance, but on the most direct mapping from Smalltalk to Lua syntax constructs possible. There is no inlining yet. The object model mapping is described in the comments of SomLjObjectManager.cpp. Starting from the main SOM file (provided by command line) all explicitly referenced classes are loaded at compile time. 
+
+Note that this is the same application as the bytecode compiler (see below) and the -lua command line option is required to run it (default is the bytecode compiler).
 
 See the Benchmarks_All_*.txt files in the Results folder for performance comparisons with CSOM and SOMpp. Even though my LuaJIT based SOM implementation is not optimized for performance yet it performs pretty well compared to the original C/C++ VMs provided on http://som-st.github.io/. On my test machine (HP EliteBook 2530p, Intel Core Duo L9400 1.86GHz, 4GB RAM, Linux i386) I get the following results when running Examples/Benchmarks/All.som:
 
@@ -46,7 +48,7 @@ The transpiled methods are written to Lua files in the Lua subdirectory relative
 
 This VM deviates in the following aspects from CSOM and SOM++:
 
-- apparently a call to an unknown method should call the method "doesNotUnderstand: selector arguments: arguments"; this VM instead reports a Lua error like "attempt to call method 'foo' (a nil value)"; apparently subsequent calls to the unknown method should just return the argument Array, which is not implemented here; I thus disabled DoesNotUnderstandMessage.som;
+- apparently a call to an unknown method should call the method "doesNotUnderstand: selector arguments: arguments"; this VM instead reports a Lua error like "attempt to call method 'foo' (a nil value)"; apparently subsequent calls to the unknown method should just return the argument Array, which is not implemented here; I thus disabled DoesNotUnderstandTest.som;
 - call to escaped blocks with non-local returns doesn't work, because the non-local return requires pcall and a method local closure which is different if the block is called within another method; thus BlockTest>>testEscapedBlock is deactivated (there seem to be other issues in this test as well);
 - primitive implementations also have the class Method; class Primitive is not used; thus ClassStructureTest>>testThatCertainMethodsArePrimitives modified;
 - Block1 is not used; each block has class Block instead; thus ClassStructureTest>>testClassIdentity is modified;
@@ -59,6 +61,16 @@ The VM includes my Lua IDE (see https://github.com/rochus-keller/LjTools#lua-par
 Here is a screenshot:
 
 ![Overview](http://software.rochus-keller.info/screenshot_som_lua_vm_ide_0.1)
+
+### A SOM to LuaJIT bytecode compiler with 
+
+This is currently an experimental implementation and work in progress. Hello.som, the Benchmarks package and most of the TestHarness tests work. The focus is not (yet) on performance, and there is no inlining yet. The performance is currently about the same as the Lua transpiler version. The object model mapping is identical to the one used by the Lua transpiler (see above). In contrast to the Lua transpiler the bytecode compiler doesn't use pcall, but a second return arugument to implement non-local returns. 
+
+The VM includes my bytecode debugger (see https://github.com/rochus-keller/LjTools/#luajit-bytecode-debugger); it can be enabled by the -dbg command line option; you can set breakpoints and step through the Lua code, watching the stack trace and the local variable values.
+
+Here is a screenshot:
+
+![LuaJIT Bytecode Debugger Screenshot](http://software.rochus-keller.info/screenshot_luajit_bytecode_debugger_v0.1.png)
 
 
 ### Binary versions

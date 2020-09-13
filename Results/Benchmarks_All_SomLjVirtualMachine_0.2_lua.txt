@@ -1,3 +1,5 @@
+SomLjVirtualMachine Lua source code version
+
 Start execution of all benchmarks. Iterations: 100
 Starting Fibonacci benchmark ...  warmup ... completed.
 

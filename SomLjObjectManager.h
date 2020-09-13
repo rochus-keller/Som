@@ -34,12 +34,15 @@ namespace Som
     class LjObjectManager : public QObject
     {
     public:
+        typedef QList<QPair<QString,QString> > GeneratedFiles; // source path -> generated path
         explicit LjObjectManager(Lua::Engine2*, QObject *parent = 0);
         bool load( const QString& som, const QStringList& paths = QStringList() );
         bool run();
         const QStringList& getErrors() const { return d_errors; }
-        const QStringList& getGenerated() const { return d_generated; }
+        const GeneratedFiles& getGenerated() const { return d_generated; }
         QByteArrayList getClassNames() const;
+        void setGenLua( bool on ) { d_genLua = on; }
+        QString pathInDir( const QString& dir, const QString& name );
     protected:
         bool parseMain(const QString& mainFile);
         Ast::Ref<Ast::Class> parseFile( const QString& file );
@@ -54,6 +57,8 @@ namespace Som
         bool instantiateClasses();
         bool instantiateClass( Ast::Class* );
         bool compileMethods( Ast::Class* );
+        void writeLua( QIODevice* out, Ast::Class* cls);
+        void writeBc( QIODevice* out, Ast::Class* cls);
     private:
         class ResolveIdents;
         Lua::Engine2* d_lua;
@@ -69,7 +74,8 @@ namespace Som
         QHash<const char*,quint8> d_keywords;
         Ast::Ref<Ast::Variable> d_system;
         QList<Ast::Ident*> d_unresolved;
-        QStringList d_generated;
+        GeneratedFiles d_generated;
+        bool d_genLua;
     };
 }
 
