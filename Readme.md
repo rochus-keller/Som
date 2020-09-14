@@ -62,7 +62,7 @@ Here is a screenshot:
 
 ![Overview](http://software.rochus-keller.info/screenshot_som_lua_vm_ide_0.1)
 
-### A SOM to LuaJIT bytecode compiler with 
+### A SOM to LuaJIT bytecode compiler and debugger
 
 This is currently an experimental implementation and work in progress. Hello.som, the Benchmarks package and most of the TestHarness tests work. The focus is not (yet) on performance, and there is no inlining yet. The performance is currently about the same as the Lua transpiler version. The object model mapping is identical to the one used by the Lua transpiler (see above). In contrast to the Lua transpiler the bytecode compiler doesn't use pcall, but a second return arugument to implement non-local returns. 
 
