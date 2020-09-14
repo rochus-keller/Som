@@ -207,6 +207,7 @@ struct LjObjectManager::ResolveIdents : public Visitor
                 QList<Named*> res = stack.back()->findVars( Lexer::getSymbol("self") );
                 Q_ASSERT( res.size() == 1 );
                 i->d_resolved = res.first();
+                Q_ASSERT( i->d_resolved->d_owner );
                 i->d_resolved->d_owner->markAsUpvalSource(stack.back());
             }
             // Ident::MsgReceiver will be set elsewhere
@@ -230,7 +231,8 @@ struct LjObjectManager::ResolveIdents : public Visitor
             {
                 Q_ASSERT( hit->getTag() == Thing::T_Variable );
                 i->d_resolved = hit;
-                i->d_resolved->markAsUpvalSource(stack.back());
+                if( i->d_resolved->d_owner ) // system, Object etc. have no owner
+                    i->d_resolved->d_owner->markAsUpvalSource(stack.back());
                 return;
             }
         }else // not inAssig or rhs
@@ -253,7 +255,8 @@ struct LjObjectManager::ResolveIdents : public Visitor
                 if( res.size() > 1 ) // TODO
                    qDebug() << "more than one result" << i->d_ident << meth->getClass()->d_name << meth->d_name;
                 i->d_resolved = res.first();
-                i->d_resolved->markAsUpvalSource(stack.back());
+                if( i->d_resolved->d_owner ) // system, Object etc. have no owner
+                    i->d_resolved->d_owner->markAsUpvalSource(stack.back());
                 return;
             }
         }

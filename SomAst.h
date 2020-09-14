@@ -233,7 +233,6 @@ namespace Ast
 
     struct GlobalScope : public Scope
     {
-        QList< Ref<Variable> > d_vars;
     };
 
     struct Function : public Scope

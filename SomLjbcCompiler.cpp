@@ -222,7 +222,11 @@ struct LjBcGen: public Visitor
         if( toSuper )
         {
             const int slot = ctx.back().buySlots(1);
-            bc.TGET(slot,0,"_super",s->d_loc.packed());
+            bool toSell = false;
+            int _self = selfToSlot( &toSell, s->d_loc );
+            bc.TGET(slot,_self,"_super",s->d_loc.packed());
+            if( toSell )
+                ctx.back().sellSlots(_self);
             slotStack.push_back(slot);
         }else
             s->d_receiver->accept(this);
@@ -231,8 +235,13 @@ struct LjBcGen: public Visitor
         bc.TGET( args, slotStack.back(),
                  LuaTranspiler::map(s->prettyName(false),s->d_patternType), s->d_loc.packed() );
         if( toSuper )
-            bc.MOV( args+1, 0, s->d_loc.packed() ); // use self for calls to super
-        else
+        {
+            bool toSell = false;
+            int _self = selfToSlot( &toSell, s->d_loc );
+            bc.MOV( args+1, _self, s->d_loc.packed() ); // use self for calls to super
+            if( toSell )
+                ctx.back().sellSlots(_self);
+        }else
             bc.MOV( args+1, slotStack.back(), s->d_loc.packed() );
         ctx.back().sellSlots(slotStack.back());
         slotStack.pop_back();
@@ -321,19 +330,8 @@ struct LjBcGen: public Visitor
         case Variable::InstanceLevel:
         case Variable::ClassLevel:
             {
-                int _self = 0;
                 bool toSell = false;
-                if( ctx.back().block )
-                {
-                    QList<Named*> selfs = ctx.back().fun->findVars(Lexer::getSymbol("self"));
-                    Q_ASSERT( selfs.size() == 1 );
-                    Variable* self = static_cast<Variable*>(selfs.first());
-
-                    _self = ctx.back().buySlots(1);
-                    toSell = true;
-                    const int uv = resolveUpval(self,a->d_loc);
-                    bc.UGET( _self, uv, a->d_loc.packed() );
-                }
+                int _self = selfToSlot( &toSell, a->d_loc );
 
                 const int index = lhs->d_slot + 1; // object field indices are one-based
                 if( index <= 255 )
@@ -505,6 +503,26 @@ struct LjBcGen: public Visitor
         }
     }
 
+    int selfToSlot( bool* toSell, const Loc& loc )
+    {
+        int _self = 0;
+        if( toSell )
+            *toSell = false;
+        if( ctx.back().block )
+        {
+            QList<Named*> selfs = ctx.back().fun->findVars(Lexer::getSymbol("self"));
+            Q_ASSERT( selfs.size() == 1 );
+            Variable* self = static_cast<Variable*>(selfs.first());
+
+            _self = ctx.back().buySlots(1);
+            if( toSell )
+                *toSell = true;
+            const int uv = resolveUpval(self,loc);
+            bc.UGET( _self, uv, loc.packed() );
+        }
+        return _self;
+    }
+
     virtual void visit( Ident* id )
     {
         const int res = ctx.back().buySlots(1);
@@ -524,19 +542,8 @@ struct LjBcGen: public Visitor
                     case Variable::InstanceLevel:
                     case Variable::ClassLevel:
                         {
-                            int _self = 0;
                             bool toSell = false;
-                            if( ctx.back().block )
-                            {
-                                QList<Named*> selfs = ctx.back().fun->findVars(Lexer::getSymbol("self"));
-                                Q_ASSERT( selfs.size() == 1 );
-                                Variable* self = static_cast<Variable*>(selfs.first());
-
-                                _self = ctx.back().buySlots(1);
-                                toSell = true;
-                                const int uv = resolveUpval(self,id->d_loc);
-                                bc.UGET( _self, uv, id->d_loc.packed() );
-                            }
+                            int _self = selfToSlot( &toSell, id->d_loc );
 
                             const int index = v->d_slot + 1; // object field indices are one-based
                             if( index <= 255 )
