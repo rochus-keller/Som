@@ -70,20 +70,30 @@ struct LjObjectManager::ResolveIdents : public Visitor
     LjObjectManager* mdl;
     Method* meth;
     QList<Ident*> unresolved;
-    QSet<const char*> d_toInline;
+    typedef QHash<const char*,FlowControl> ToInline;
+    ToInline d_toInline;
     QList<Block*> blocks;
     bool inAssig;
 
 
     ResolveIdents()
     {
-        d_toInline.insert( Lexer::getSymbol("ifTrue:"));
-        d_toInline.insert( Lexer::getSymbol("ifFalse:"));
-        d_toInline.insert( Lexer::getSymbol("or:"));
-        d_toInline.insert( Lexer::getSymbol("and:"));
-        d_toInline.insert( Lexer::getSymbol("ifTrue:ifFalse:"));
-        d_toInline.insert( Lexer::getSymbol("whileFalse:"));
-        d_toInline.insert( Lexer::getSymbol("whileTrue:"));
+        d_toInline.insert( Lexer::getSymbol("ifTrue:").constData(), IfTrue); // ST80
+        d_toInline.insert( Lexer::getSymbol("ifFalse:").constData(), IfFalse); // ST80
+        d_toInline.insert( Lexer::getSymbol("ifTrue:ifFalse:").constData(), IfElse); // ST80
+#if 0 // TODO
+        //d_toInline.insert( Lexer::getSymbol("or:"));
+        //d_toInline.insert( Lexer::getSymbol("and:"));
+        d_toInline.insert( Lexer::getSymbol("whileFalse:").constData(), WhileTrue); // ST80
+        d_toInline.insert( Lexer::getSymbol("whileTrue:").constData(), WhileFalse); // ST80
+        d_toInline.insert( Lexer::getSymbol("timesRepeat:"));
+#endif
+
+        // ST80: MessageNode comment
+        // If special>0, I compile special code in-line instead of sending
+        // messages with literal methods as remotely copied contexts.
+        // ST80: MessageTally comment receivers field
+        // If this field is nil, it indicates tallies due to in-line primitives
     }
 
     static QPair<int,int> countVars(Class* cls)
@@ -127,11 +137,14 @@ struct LjObjectManager::ResolveIdents : public Visitor
            id->d_use = Ident::Declaration;
            meth->d_helper << id.data();
        }
+       if( v->d_inlinedOwner == 0 && v->d_owner->isFunc() )
+           v->d_inlinedOwner = static_cast<Function*>(v->d_owner);
     }
     void visit( Method* m)
     {
         meth = m;
         stack.push_back(m);
+        m->d_self->d_inlinedOwner = m;
         for( int i = 0; i < m->d_vars.size(); i++ )
             m->d_vars[i]->accept(this);
         for( int i = 0; i < m->d_body.size(); i++ )
@@ -139,20 +152,33 @@ struct LjObjectManager::ResolveIdents : public Visitor
         stack.pop_back();
         meth = 0;
     }
+
+    void promoteVarOwner( Block* b )
+    {
+        Q_ASSERT( b->d_func->d_inline && b->d_func->d_owner->isFunc() );
+        Function* owner = b->d_func->inlinedOwner();
+        for( int i = 0; i < b->d_func->d_vars.size(); i++ )
+            b->d_func->d_vars[i]->d_inlinedOwner = owner;
+    }
+
     void visit( Block* b)
     {
         if( blocks.isEmpty() )
         {
-            if( b->d_inline )
-                b->d_inlinedLevel = 0;
-            else
-                b->d_inlinedLevel = 1;
+            if( b->d_func->d_inline )
+            {
+                b->d_func->d_inlinedLevel = 0;
+                promoteVarOwner(b);
+            }else
+                b->d_func->d_inlinedLevel = 1;
         }else
         {
-            if( b->d_inline )
-                b->d_inlinedLevel = blocks.back()->d_inlinedLevel;
-            else
-                b->d_inlinedLevel = blocks.back()->d_inlinedLevel + 1;
+            if( b->d_func->d_inline )
+            {
+                b->d_func->d_inlinedLevel = blocks.back()->d_func->d_inlinedLevel;
+                promoteVarOwner(b);
+            }else
+                b->d_func->d_inlinedLevel = blocks.back()->d_func->d_inlinedLevel + 1;
         }
         stack.push_back(b->d_func.data());
         blocks.push_back(b);
@@ -162,11 +188,6 @@ struct LjObjectManager::ResolveIdents : public Visitor
             b->d_func->d_body[i]->accept(this);
         blocks.pop_back();
         stack.pop_back();
-    }
-    void visit( Cascade* c )
-    {
-        for( int i = 0; i < c->d_calls.size(); i++ )
-            c->d_calls[i]->accept(this);
     }
     void visit( Assig* a )
     {
@@ -267,17 +288,23 @@ struct LjObjectManager::ResolveIdents : public Visitor
         if( s->d_patternType == KeywordPattern )
         {
             const QByteArray name = Lexer::getSymbol( s->prettyName(false) );
-            if( d_toInline.contains( name.constData() ) )
+            ToInline::const_iterator it = d_toInline.find(name.constData());
+            if( it != d_toInline.end() )
             {
+                bool allInline = true;
                 for( int i = 0; i < s->d_args.size(); i++ )
                 {
                     if( s->d_args[i]->getTag() == Thing::T_Block )
-                        static_cast<Block*>( s->d_args[i].data() )->d_inline = true;
+                        static_cast<Block*>( s->d_args[i].data() )->d_func->d_inline = true;
+                    else
+                        allInline = false;
                 }
+                if( allInline )
+                    s->d_flowControl = it.value();
             }
         }
         for( int i = 0; i < s->d_args.size(); i++ )
-            s->d_args[i]->accept(this);
+            s->d_args[i]->accept(this); // d_inline is already set here
         s->d_receiver->accept(this);
         if( s->d_receiver->getTag() == Ast::Thing::T_Ident )
         {
@@ -287,7 +314,7 @@ struct LjObjectManager::ResolveIdents : public Visitor
     }
     void visit( Return* r )
     {
-        if( !blocks.isEmpty() && blocks.back()->d_inlinedLevel > 0 )
+        if( !blocks.isEmpty() && blocks.back()->d_func->d_inlinedLevel > 0 )
         {
             meth->d_hasNonLocalReturnIfInlined = true;
             r->d_nonLocalIfInlined = true;

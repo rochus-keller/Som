@@ -286,11 +286,6 @@ struct LuaTranspilerVisitor : public Ast::Visitor
         out << ")";
     }
 
-    virtual void visit( Cascade* c )
-    {
-        Q_ASSERT( false ); // not supported by SOM
-    }
-
     virtual void visit( Assig* a )
     {
         Q_ASSERT( a->d_lhs->d_resolved );
@@ -367,11 +362,6 @@ struct LuaTranspilerVisitor : public Ast::Visitor
                 Q_ASSERT( false );
             }
         }
-    }
-
-    virtual void visit( Selector* )
-    {
-        Q_ASSERT( false );
     }
 };
 

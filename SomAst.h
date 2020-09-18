@@ -41,8 +41,8 @@ namespace Ast
     };
 
     struct MsgSend; struct Return; struct ArrayLiteral; struct Variable; struct Class; struct Method;
-    struct Block; struct Variable; struct Cascade; struct Assig; struct Char; struct String;
-    struct Number; struct Symbol; struct Ident; struct Selector; struct Scope; struct Named; struct Function;
+    struct Block; struct Variable; struct Assig; struct Char; struct String;
+    struct Number; struct Symbol; struct Ident; struct Scope; struct Named; struct Function;
 
     struct Visitor
     {
@@ -59,10 +59,6 @@ namespace Ast
         virtual void visit( Number* ) {}
         virtual void visit( Symbol* ) {}
         virtual void visit( Ident* ) {}
-
-        // not used:
-        virtual void visit( Cascade* ) {}
-        virtual void visit( Selector* ) {}
     };
 
     struct Loc
@@ -79,8 +75,8 @@ namespace Ast
 
     struct Thing : public QSharedData
     {
-        enum Tag { T_Thing, T_Class, T_Variable, T_Method, T_Block, T_Return, T_Cascade, T_Func,
-                   T_MsgSend, T_Assig, T_Array, T_Char, T_String, T_Number, T_Symbol, T_Ident, T_Selector,
+        enum Tag { T_Thing, T_Class, T_Variable, T_Method, T_Block, T_Return, T_Func,
+                   T_MsgSend, T_Assig, T_Array, T_Char, T_String, T_Number, T_Symbol, T_Ident,
                  T_MAX };
 
         Loc d_loc;
@@ -123,14 +119,6 @@ namespace Ast
         Symbol( const QByteArray& sym, const Loc& pos ):d_sym(sym) { d_loc = pos; }
         int getTag() const { return T_Symbol; }
         quint32 getLen() const { return d_sym.size(); }
-        void accept(Visitor* v) { v->visit(this); }
-    };
-
-    struct Selector : public Expression
-    {
-        QByteArray d_pattern;
-        int getTag() const { return T_Selector; }
-        quint32 getLen() const { return d_pattern.size(); }
         void accept(Visitor* v) { v->visit(this); }
     };
 
@@ -179,26 +167,20 @@ namespace Ast
     };
 
     enum PatternType { NoPattern, UnaryPattern, BinaryPattern, KeywordPattern };
+    enum FlowControl { NoFlowControl, IfTrue, IfFalse, IfElse, WhileTrue, WhileFalse };
 
     struct MsgSend : public Expression
     {
         quint8 d_patternType;
+        quint8 d_flowControl;
         QList< QPair<QByteArray,Loc> > d_pattern; // name, pos
-        ExpList d_args;
-        Ref<Expression> d_receiver;
+        ExpList d_args; // body block and else block if FlowControl
+        Ref<Expression> d_receiver; // condition if FlowControl
         Method* d_inMethod;
-        MsgSend():d_patternType(NoPattern),d_inMethod(0){}
+        MsgSend():d_patternType(NoPattern),d_inMethod(0),d_flowControl(NoFlowControl){}
         int getTag() const { return T_MsgSend; }
         void accept(Visitor* v) { v->visit(this); }
         QByteArray prettyName(bool withSpace = true) const;
-    };
-
-    struct Cascade : public Expression
-    {
-        // NOTE: all d_calls must point to the same d_receiver Expression!
-        QList< Ref<MsgSend> > d_calls;
-        int getTag() const { return T_Cascade; }
-        void accept(Visitor* v) { v->visit(this); }
     };
 
     struct Return : public Expression
@@ -229,34 +211,34 @@ namespace Ast
         QList<Named*> findMeths(const QByteArray& name, bool recursive = true ) const;
         Method* getMethod() const;
         Class* getClass() const;
+        virtual bool isFunc() const { return false; }
     };
 
     struct GlobalScope : public Scope
     {
+        QList< Ref<Variable> > d_vars;
     };
 
     struct Function : public Scope
     {
         QList< Ref<Variable> > d_vars;
         ExpList d_body;
+        quint8 d_syntaxLevel, d_inlinedLevel; // 0 is method
+        bool d_inline;
         bool d_upvalSource;
-        Function():d_upvalSource(false){}
+        Function():d_upvalSource(false),d_syntaxLevel(0),d_inlinedLevel(0),d_inline(0){}
         Variable* findVar( const QByteArray& ) const;
         int getTag() const { return T_Func; }
         void addVar(Variable*);
         int getParamCount() const;
-        void markAsUpvalSource(Scope* scope)
-        {
-            if( scope != this )
-                d_upvalSource = true;
-        }
+        bool isFunc() const { return true; }
+        void markAsUpvalSource(Scope* scope);
+        Function* inlinedOwner() const;
     };
 
     struct Block : public Expression
     {
         Ref<Function> d_func; // not named
-        quint8 d_syntaxLevel, d_inlinedLevel; // 0 is method
-        bool d_inline;
         Block();
         int getTag() const { return T_Block; }
         void accept(Visitor* v) { v->visit(this); }
@@ -290,7 +272,8 @@ namespace Ast
         enum { InstanceLevel, ClassLevel, Argument, Temporary, Global };
         quint8 d_kind;
         quint16 d_slot; // to be set by compiler
-        Variable():d_kind(InstanceLevel),d_slot(0){}
+        Function* d_inlinedOwner;
+        Variable():d_kind(InstanceLevel),d_slot(0),d_inlinedOwner(0){}
         int getTag() const { return T_Variable; }
         void accept(Visitor* v) { v->visit(this); }
         bool classLevel() const { return d_kind == ClassLevel; }

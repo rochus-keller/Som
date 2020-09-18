@@ -1,0 +1,114 @@
+SomLjVirtualMachine LuaJIT Bytecode version with ifTrue/ifFalse inlined
+
+Start execution of all benchmarks. Iterations: 100
+Starting Fibonacci benchmark ...  warmup ... completed.
+
+Benchmark: Fibonacci
+   Iterations: 64 (elapsed time 3014 ms)
+   AVERAGE: 47 ms
+
+Starting Dispatch benchmark ...  warmup ... completed.
+
+Benchmark: Dispatch
+   Iterations: 100 (elapsed time 2827 ms)
+   AVERAGE: 28 ms
+
+Starting Bounce benchmark ...  warmup ... completed.
+
+Benchmark: Bounce
+   Iterations: 100 (elapsed time 2619 ms)
+   AVERAGE: 26 ms
+
+Starting Loop benchmark ...  warmup ... completed.
+
+Benchmark: Loop
+   Iterations: 98 (elapsed time 3005 ms)
+   AVERAGE: 31 ms
+
+Starting Permute benchmark ...  warmup ... completed.
+
+Benchmark: Permute
+   Iterations: 100 (elapsed time 1718 ms)
+   AVERAGE: 17 ms
+
+Starting Queens benchmark ...  warmup ... completed.
+
+Benchmark: Queens
+   Iterations: 93 (elapsed time 3001 ms)
+   AVERAGE: 32 ms
+
+Starting List benchmark ...  warmup ... completed.
+
+Benchmark: List
+   Iterations: 100 (elapsed time 1436 ms)
+   AVERAGE: 14 ms
+
+Starting Recurse benchmark ...  warmup ... completed.
+
+Benchmark: Recurse
+   Iterations: 100 (elapsed time 2235 ms)
+   AVERAGE: 22 ms
+
+Starting Storage benchmark ...  warmup ... completed.
+
+Benchmark: Storage
+   Iterations: 100 (elapsed time 2630 ms)
+   AVERAGE: 26 ms
+
+Starting Sieve benchmark ...  warmup ... completed.
+
+Benchmark: Sieve
+   Iterations: 85 (elapsed time 3031 ms)
+   AVERAGE: 36 ms
+
+Starting BubbleSort benchmark ...  warmup ... completed.
+
+Benchmark: BubbleSort
+   Iterations: 100 (elapsed time 3021 ms)
+   AVERAGE: 30 ms
+
+Starting QuickSort benchmark ...  warmup ... completed.
+
+Benchmark: QuickSort
+   Iterations: 100 (elapsed time 2353 ms)
+   AVERAGE: 24 ms
+
+Starting Sum benchmark ...  warmup ... completed.
+
+Benchmark: Sum
+   Iterations: 100 (elapsed time 2828 ms)
+   AVERAGE: 28 ms
+
+Starting Towers benchmark ...  warmup ... completed.
+
+Benchmark: Towers
+   Iterations: 100 (elapsed time 2585 ms)
+   AVERAGE: 26 ms
+
+Starting TreeSort benchmark ...  warmup ... completed.
+
+Benchmark: TreeSort
+   Iterations: 100 (elapsed time 1153 ms)
+   AVERAGE: 12 ms
+
+Starting IntegerLoop benchmark ...  warmup ... completed.
+
+Benchmark: IntegerLoop
+   Iterations: 53 (elapsed time 3041 ms)
+   AVERAGE: 57 ms
+
+Starting FieldLoop benchmark ...  warmup ... completed.
+
+Benchmark: FieldLoop
+   Iterations: 100 (elapsed time 2918 ms)
+   AVERAGE: 29 ms
+
+Summed Average Runtime: 29 ms
+
+average 29
+geomean 27
+median 28
+sum 485
+
+
+

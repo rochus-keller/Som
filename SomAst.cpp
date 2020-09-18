@@ -140,11 +140,6 @@ Expression* Method::findByPos(quint32 pos) const
             for( int i = 0; i < b->d_func->d_body.size(); i++ )
                 b->d_func->d_body[i]->accept(this);
         }
-        void visit( Cascade* c )
-        {
-            for( int i = 0; i < c->d_calls.size(); i++ )
-                c->d_calls[i]->accept(this);
-        }
         void visit( Assig* a )
         {
             a->d_lhs->accept(this);
@@ -159,11 +154,6 @@ Expression* Method::findByPos(quint32 pos) const
         {
             if( isHit(i) )
                 throw (Expression*)i;
-        }
-        void visit( Selector* s)
-        {
-            if( isHit(s) )
-                throw (Expression*)s;
         }
         void visit( MsgSend* s)
         {
@@ -228,6 +218,34 @@ int Function::getParamCount() const
     return res;
 }
 
+void Function::markAsUpvalSource(Scope* scope)
+{
+    if( scope != this )
+    {
+        d_upvalSource = true;
+        if( d_inline )
+        {
+            Function* owner = inlinedOwner();
+            Q_ASSERT( owner );
+            owner->d_upvalSource = true;
+        }
+    }
+}
+
+Function*Function::inlinedOwner() const
+{
+    if( !d_owner->isFunc() )
+        return 0;
+    Function* owner = static_cast<Function*>( d_owner );
+    while( owner->d_inline )
+    {
+        Q_ASSERT( owner->d_owner->isFunc() );
+        owner = static_cast<Function*>( owner->d_owner );
+    }
+    Q_ASSERT( owner && !owner->d_inline );
+    return owner;
+}
+
 Method* Scope::getMethod() const
 {
     if( getTag() == Thing::T_Method )
@@ -238,7 +256,7 @@ Method* Scope::getMethod() const
         return 0;
 }
 
-Block::Block():d_syntaxLevel(0),d_inline(false),d_inlinedLevel(0)
+Block::Block()
 {
     d_func = new Function();
 }
@@ -408,27 +426,6 @@ void Thing::dump(QTextStream& out)
             }
             level--;
         }
-        virtual void visit( Cascade* c )
-        {
-            Q_ASSERT( false ); // SOM apparently doesn't use cascades
-            Q_ASSERT( !c->d_calls.isEmpty() );
-            out << "MSND:";
-            level++;
-            out << endl << ws() << "TO: ";
-            printParen(c->d_calls.first()->d_receiver.data());
-            level++;
-            for( int j = 0; j < c->d_calls.size(); j++ )
-            {
-                out << endl << ws() << "MSG: \"" << c->d_calls[j]->prettyName(false) << "\" ";
-                for( int i = 0; i < c->d_calls[j]->d_args.size(); i++ )
-                {
-                    out << endl << ws();
-                    printParen(c->d_calls[j]->d_args[i].data());
-                }
-            }
-            level--;
-            level--;
-        }
         virtual void visit( Assig* a)
         {
             out << "ASS: ";
@@ -467,10 +464,6 @@ void Thing::dump(QTextStream& out)
             else
                 out << i->d_ident << " (unresolved)";
         }
-        virtual void visit( Selector* )
-        {
-            Q_ASSERT( false );
-        }
     };
     V v(out);
     accept(&v);
@@ -489,3 +482,4 @@ QVariant Number::toNumber(bool* ok) const
     }else
         return d_num.toLongLong(ok);
 }
+

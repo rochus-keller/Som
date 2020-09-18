@@ -53,7 +53,7 @@ struct LjBcGen: public Visitor
             // qDebug() << "sell" << base << len;
             Lua::JitComposer::releaseSlot(pool,base, len );
         }
-        quint16 resolveUpval(Variable* n)
+        quint16 getUpvalNr(Variable* n)
         {
             Upvals::const_iterator i = upvals.find(n);
             if( i != upvals.end() )
@@ -90,20 +90,21 @@ struct LjBcGen: public Visitor
     }
     quint16 resolveUpval( Variable* n, const Loc& loc )
     {
-        Q_ASSERT( n->d_owner != ctx.back().fun );
+        Q_ASSERT( n->d_inlinedOwner != ctx.back().fun );
         // get the upval id from the present context
-        const quint16 res = ctx.back().resolveUpval(n);
+        const quint16 res = ctx.back().getUpvalNr(n);
         bool foundHome = false;
         // now register the upval in all upper contexts too up to but not including the
         // one where the symbol was defined
         for( int i = ctx.size() - 2; i >= 0; i-- )
         {
-            if( n->d_owner == ctx[i].fun )
+            // NOTE that inlined Blocks are not in the ctx stack!
+            if( n->d_inlinedOwner == ctx[i].fun )
             {
                 foundHome = true;
                 break;
             }else
-                ctx[i].resolveUpval(n);
+                ctx[i].getUpvalNr(n);
         }
         if( !foundHome )
             error( loc, QString("cannot find module level symbol for upvalue '%1'").arg(n->d_name.constData()) );
@@ -136,6 +137,7 @@ struct LjBcGen: public Visitor
 
     Lua::JitComposer::UpvalList getUpvals()
     {
+        Function* fowner = ctx.back().fun->inlinedOwner();
         Lua::JitComposer::UpvalList uvl(ctx.back().upvals.size());
         Ctx::Upvals::const_iterator i;
         for( i = ctx.back().upvals.begin(); i != ctx.back().upvals.end(); ++i )
@@ -144,13 +146,13 @@ struct LjBcGen: public Visitor
             u.d_name = i.key()->d_name;
             // if( i.key()->d_uvRo )
             //    u.d_isRo = true; // TODO
-            if( i.key()->d_owner == ctx.back().fun->d_owner )
+            if( i.key()->d_inlinedOwner == fowner )
             {
                 u.d_uv = i.key()->d_slot;
                 u.d_isLocal = true;
             }else if( ctx.size() > 1 )
             {
-                u.d_uv = ctx[ ctx.size() - 2 ].resolveUpval(i.key());
+                u.d_uv = ctx[ ctx.size() - 2 ].getUpvalNr(i.key());
             }else
                 error( i.key()->d_loc, QString("cannot compose upvalue list because of '%1'").arg(u.d_name.constData() ) );
             uvl[i.value()] = u;
@@ -216,8 +218,101 @@ struct LjBcGen: public Visitor
         ctx.pop_back();
     }
 
+    void inlineBlock( Block* b )
+    {
+        for( int i = 0; i < b->d_func->d_vars.size(); i++ )
+        {
+            const int var = ctx.back().buySlots(1);
+            Q_ASSERT( b->d_func->d_vars[i]->d_kind == Variable::Temporary );
+            b->d_func->d_vars[i]->d_slot = var;
+        }
+
+        for( int i = 0; i < b->d_func->d_body.size(); i++ )
+        {
+            b->d_func->d_body[i]->accept( this );
+            if( i < b->d_func->d_body.size() - 1 )
+            {
+                // the last expression in the block body is the one returned to the caller
+                ctx.back().sellSlots(slotStack.back());
+                slotStack.pop_back();
+            }
+        }
+
+        for( int i = 0; i < b->d_func->d_vars.size(); i++ )
+            ctx.back().sellSlots(b->d_func->d_vars[i]->d_slot );
+    }
+
+    void inlineIf( MsgSend* s )
+    {
+        if( s->d_receiver->keyword() == Expression::_super )
+        {
+            const int slot = ctx.back().buySlots(1);
+            bool toSell = false;
+            int _self = selfToSlot( &toSell, s->d_loc );
+            bc.TGET(slot,_self,"_super",s->d_loc.packed());
+            if( toSell )
+                ctx.back().sellSlots(_self);
+            slotStack.push_back(slot);
+        }else if( s->d_receiver->getTag() == Thing::T_Block )
+        {
+            inlineBlock( static_cast<Block*>(s->d_receiver.data()));
+        }else
+            s->d_receiver->accept(this);
+        // the result is in slotStack.back()
+        switch( s->d_flowControl )
+        {
+        case IfTrue:
+        case IfElse:
+            bc.ISF(slotStack.back(),s->d_loc.packed());
+            break;
+        case IfFalse:
+            bc.IST(slotStack.back(),s->d_loc.packed());
+            break;
+        default:
+            Q_ASSERT(false);
+            break;
+        }
+        ctx.back().sellSlots(slotStack.back());
+        slotStack.pop_back();
+        bc.JMP(ctx.back().pool.d_frameSize,0,s->d_loc.packed());
+        const int label = bc.getCurPc();
+
+        Q_ASSERT( !s->d_args.isEmpty() && s->d_args.first()->getTag() == Thing::T_Block );
+        inlineBlock( static_cast<Block*>(s->d_args.first().data()));
+        // the result is in slotStack.back()
+
+        if( s->d_flowControl == IfElse )
+        {
+            // before emitting the else part take care that the if part jumps over it
+            bc.JMP(ctx.back().pool.d_frameSize,0,s->d_loc.packed());
+            const int label2 = bc.getCurPc();
+
+            bc.patch(label);
+            const int res = slotStack.back();
+            Q_ASSERT( s->d_args.size() == 2 && s->d_args.last()->getTag() == Thing::T_Block );
+            inlineBlock( static_cast<Block*>(s->d_args.last().data()));
+            // the result is in slotStack.back()
+            bc.MOV(res,slotStack.back(),s->d_loc.packed());
+            ctx.back().sellSlots(slotStack.back());
+            slotStack.pop_back();
+
+            bc.patch(label2);
+        }else
+            bc.patch(label);
+
+    }
+
     virtual void visit( MsgSend* s )
     {
+        switch( s->d_flowControl )
+        {
+        case IfTrue:
+        case IfFalse:
+        case IfElse:
+            inlineIf(s);
+            return;
+        }
+
         const bool toSuper = s->d_receiver->keyword() == Expression::_super;
         if( toSuper )
         {
@@ -255,7 +350,7 @@ struct LjBcGen: public Visitor
         }
         bc.CALL(args,2,s->d_args.size() + 1, s->d_loc.packed() );
 
-        if( ctx.back().block || !s->d_inMethod->d_hasNonLocalReturn )
+        if( ctx.back().block || !s->d_inMethod->d_hasNonLocalReturnIfInlined )
         {
             // if there is a second return value which is not nil we directly return from blocks
             // and methods where no local return block was defined and just pass through the second value
@@ -296,7 +391,7 @@ struct LjBcGen: public Visitor
     {
         r->d_what->accept(this);
         // the result is in slotStack.back()
-        if( ctx.back().block && r->d_nonLocal ) // && ctx.back().block->d_inlinedLevel > 0 )
+        if( ctx.back().block && r->d_nonLocalIfInlined )
         {
             // Block Level
             // an explicit return in a block is always a non-local return
@@ -351,7 +446,7 @@ struct LjBcGen: public Visitor
         case Variable::Argument:
         case Variable::Temporary:
             // either local or upval
-            if( lhs->d_owner != ctx.back().fun )
+            if( lhs->d_inlinedOwner != ctx.back().fun )
             {
                 const int uv = resolveUpval(lhs,lhs->d_loc);
                 bc.USET( uv, slotStack.back(), a->d_loc.packed() );
@@ -563,13 +658,12 @@ struct LjBcGen: public Visitor
                     case Variable::Argument:
                     case Variable::Temporary:
                         // either local or upval
-                        if( v->d_owner != ctx.back().fun )
+                        if( v->d_inlinedOwner != ctx.back().fun )
                         {
                             const int uv = resolveUpval(v,id->d_loc);
                             bc.UGET( res, uv, id->d_loc.packed() );
                         }else
                         {
-                            Q_ASSERT( ctx.back().block != 0 || v->d_slot != 0 ); // variable slots start with 1 and we never assign to self
                             bc.MOV( res, v->d_slot, id->d_loc.packed() );
                         }
                         break;

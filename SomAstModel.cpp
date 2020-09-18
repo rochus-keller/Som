@@ -93,12 +93,6 @@ struct Model::ResolveIdents : public Visitor
             b->d_func->d_body[i]->accept(this);
         stack.pop_back();
     }
-    void visit( Cascade* c )
-    {
-        // never occurs!!!
-        for( int i = 0; i < c->d_calls.size(); i++ )
-            c->d_calls[i]->accept(this);
-    }
     void visit( Assig* a )
     {
         inAssig = true;
@@ -197,11 +191,6 @@ struct Model::ResolveIdents : public Visitor
     {
         for( int i = 0; i < a->d_elements.size(); i++ )
             a->d_elements[i]->accept(this);
-    }
-    virtual void visit( Selector* )
-    {
-        Q_ASSERT( false ); // never occurs
-        qDebug() << "selector";
     }
 
 };
