@@ -64,7 +64,17 @@ Here is a screenshot:
 
 ### A SOM to LuaJIT bytecode compiler and debugger
 
-This is currently an experimental implementation and work in progress. Hello.som, the Benchmarks package and most of the TestHarness tests work. The focus is not (yet) on performance, and there is no inlining yet. The performance is currently about the same as the Lua transpiler version. The object model mapping is identical to the one used by the Lua transpiler (see above). In contrast to the Lua transpiler the bytecode compiler doesn't use pcall, but a second return arugument to implement non-local returns. 
+This is currently work in progress. Hello.som, the Benchmarks package and most of the TestHarness tests work. I implemented the same inlining of ifTrue/ifFalse as in SOM++ (CSOM doesn't seem to make inlining) plus inlining of whileTrue/whileFalse as in ST80. The performance is currently about factor two of the Lua transpiler version (see table). The object model mapping is identical to the one used by the Lua transpiler (see above). In contrast to the Lua transpiler the bytecode compiler doesn't use pcall, but a second return arugument to implement non-local returns. The same deviations from CSOM/SOM++ apply like in the Lua transpiler version (see above). 
+
+Version | (Fixed) Summed Average Runtime [ms] | Speed-down factor
+--- | --- | ---
+CSOM | 8604 | 18
+SOM++ copying collector | 3425 | 7
+SOM++ mark-sweep | 1874 | 4
+LjVM Lua | 746 | 2
+LjVM bytecode (bc) | 733 | 2
+LjVM bc if inlined | 485 | 1
+LjVM bc if while inlined | 468 | 1
 
 The VM includes my bytecode debugger (see https://github.com/rochus-keller/LjTools/#luajit-bytecode-debugger); it can be enabled by the -dbg command line option; you can set breakpoints and step through the Lua code, watching the stack trace and the local variable values.
 

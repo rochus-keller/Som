@@ -302,6 +302,59 @@ struct LjBcGen: public Visitor
 
     }
 
+    void inlineWhile( MsgSend* s )
+    {
+        bc.LOOP( ctx.back().pool.d_frameSize, 0, s->d_loc.packed() ); // while true do
+        const quint32 startLoop = bc.getCurPc();
+        const int res = ctx.back().buySlots(1);
+
+        if( s->d_receiver->keyword() == Expression::_super )
+        {
+            const int slot = ctx.back().buySlots(1);
+            bool toSell = false;
+            int _self = selfToSlot( &toSell, s->d_loc );
+            bc.TGET(slot,_self,"_super",s->d_loc.packed());
+            if( toSell )
+                ctx.back().sellSlots(_self);
+            slotStack.push_back(slot);
+        }else if( s->d_receiver->getTag() == Thing::T_Block )
+        {
+            inlineBlock( static_cast<Block*>(s->d_receiver.data()));
+        }else
+            s->d_receiver->accept(this);
+        // the result is in slotStack.back()
+        switch( s->d_flowControl )
+        {
+        case WhileTrue:
+            bc.ISF(slotStack.back(),s->d_loc.packed());
+            break;
+        case WhileFalse:
+            bc.IST(slotStack.back(),s->d_loc.packed());
+            break;
+        default:
+            Q_ASSERT(false);
+            break;
+        }
+        ctx.back().sellSlots(slotStack.back());
+        slotStack.pop_back();
+        bc.JMP(ctx.back().pool.d_frameSize,0,s->d_loc.packed());
+        const int label = bc.getCurPc();
+
+        Q_ASSERT( !s->d_args.isEmpty() && s->d_args.first()->getTag() == Thing::T_Block );
+        inlineBlock( static_cast<Block*>(s->d_args.first().data()));
+        // the result is in slotStack.back()
+        bc.MOV( res, slotStack.back(), s->d_loc.packed());
+        ctx.back().sellSlots(slotStack.back());
+        slotStack.pop_back();
+
+        bc.JMP(ctx.back().pool.d_frameSize, startLoop - bc.getCurPc() - 2, s->d_loc.packed()); // loop to start
+        bc.patch( startLoop, bc.getCurPc() - startLoop -1 );
+
+        bc.patch( label );
+
+        slotStack.push_back(res);
+    }
+
     virtual void visit( MsgSend* s )
     {
         switch( s->d_flowControl )
@@ -310,6 +363,10 @@ struct LjBcGen: public Visitor
         case IfFalse:
         case IfElse:
             inlineIf(s);
+            return;
+        case WhileTrue:
+        case WhileFalse:
+            inlineWhile(s);
             return;
         }
 

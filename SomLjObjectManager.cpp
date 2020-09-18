@@ -81,11 +81,9 @@ struct LjObjectManager::ResolveIdents : public Visitor
         d_toInline.insert( Lexer::getSymbol("ifTrue:").constData(), IfTrue); // ST80
         d_toInline.insert( Lexer::getSymbol("ifFalse:").constData(), IfFalse); // ST80
         d_toInline.insert( Lexer::getSymbol("ifTrue:ifFalse:").constData(), IfElse); // ST80
-#if 0 // TODO
-        //d_toInline.insert( Lexer::getSymbol("or:"));
-        //d_toInline.insert( Lexer::getSymbol("and:"));
-        d_toInline.insert( Lexer::getSymbol("whileFalse:").constData(), WhileTrue); // ST80
-        d_toInline.insert( Lexer::getSymbol("whileTrue:").constData(), WhileFalse); // ST80
+        d_toInline.insert( Lexer::getSymbol("whileFalse:").constData(), WhileFalse); // ST80
+        d_toInline.insert( Lexer::getSymbol("whileTrue:").constData(), WhileTrue); // ST80
+#if 0
         d_toInline.insert( Lexer::getSymbol("timesRepeat:"));
 #endif
 
