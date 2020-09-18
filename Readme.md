@@ -74,7 +74,7 @@ SOM++ mark-sweep | 1874 | 4
 LjVM Lua | 746 | 2
 LjVM bytecode (bc) | 733 | 2
 LjVM bc if inlined | 485 | 1
-LjVM bc if while inlined | 468 | 1
+LjVM bc if & while inlined | 468 | 1
 
 The VM includes my bytecode debugger (see https://github.com/rochus-keller/LjTools/#luajit-bytecode-debugger); it can be enabled by the -dbg command line option; you can set breakpoints and step through the Lua code, watching the stack trace and the local variable values.
 
@@ -85,15 +85,20 @@ Here is a screenshot:
 
 ### Binary versions
 
-TBD
+Here is a binary version of the class browser and the virtual machine for Windows: http://software.rochus-keller.info/Som_win32.zip.
+Just unpack the ZIP somewhere on your drive and double-click SomClassBrowser.exe or one of the batch files; Qt libraries are included as well as the SOM Benchmarks example.
 
 ### Build Steps
 
 Follow these steps if you want to build the software yourself:
 
 1. Make sure a Qt 5.x (libraries and headers) version compatible with your C++ compiler is installed on your system.
-1. Download the source code from https://github.com/rochus-keller/Som/archive/master.zip and unpack it.
-1. Goto the unpacked directory and execute e.g. `QTDIR/bin/qmake SomClassBrowser.pro` (see the Qt documentation concerning QTDIR).
+1. Create an empty directory, call it e.g. Build.
+1. Download https://github.com/rochus-keller/Som/archive/master.zip and unpack it to the Build directory. Rename it Som.
+1. Download https://github.com/rochus-keller/GuiTools/archive/master.zip and unpack to in the Build directory. Rename it GuiTools.
+1. Download https://github.com/rochus-keller/LjTools/archive/master.zip and unpack it to the Build directory. Rename it LjTools.
+1. Download https://github.com/rochus-keller/LuaJIT/archive/LjTools.zip and unpack it to the Build directory. Rename it LuaJIT. Go to the src subdirectory and run the build script appropriate for your platform (see LuaJIT/doc/install.html for more information).
+1. Goto the Build/Som directory and execute e.g. `QTDIR/bin/qmake SomClassBrowser.pro` or any other pro file in the directory (see the Qt documentation concerning QTDIR).
 1. Run make; after a couple of seconds you will find the executable in the build directory.
 
 Alternatively you can open the pro file using QtCreator and build it there. Note that there are different pro files in this project.

@@ -449,6 +449,7 @@ int main(int argc, char *argv[])
         {
             Lua::Terminal2 t(0,vm.getLua());
             t.show();
+            vm.run(useJit,useProfiler);
             return a.exec();
         }else
         {

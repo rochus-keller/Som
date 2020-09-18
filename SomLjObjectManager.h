@@ -24,6 +24,8 @@
 #include <QStringList>
 #include <Som/SomAst.h>
 
+class QIODevice;
+
 namespace Lua
 {
     class Engine2;
