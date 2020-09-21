@@ -38,10 +38,13 @@ namespace Som
     public:
         typedef QList<QPair<QString,QString> > GeneratedFiles; // source path -> generated path
         explicit LjObjectManager(Lua::Engine2*, QObject *parent = 0);
-        bool load( const QString& som, const QStringList& paths = QStringList() );
+        bool load( const QString& mainSomFile, const QStringList& paths = QStringList() );
+        bool loadAtRuntime( const QByteArray& className );
+        bool setArgs( const QStringList& );
         bool run();
         const QStringList& getErrors() const { return d_errors; }
         const GeneratedFiles& getGenerated() const { return d_generated; }
+        void generateSomPrimitives();
         QByteArrayList getClassNames() const;
         void setGenLua( bool on ) { d_genLua = on; }
         QString pathInDir( const QString& dir, const QString& name );

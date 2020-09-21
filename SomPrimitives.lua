@@ -325,17 +325,20 @@ end
 module.System["hasGlobal:"] = module.System.hasGlobal_
 
 function module.System.load_(self,sym)
-	-- TODO
-	print("System.load not implemented")
-	TRAP()
+	if loadClassByName then
+		return loadClassByName( sym._str )
+	else
+		print("System.load not implemented")
+		TRAP()
+	end
 end
 module.System["load:"] = module.System.load_
 
 function module.System.exit_(self,err)
-	if err ~= 0 then
-		print("System>>exit: "..tostring(err))
-	end
-	ABORT()
+        --if err ~= 0 then
+        --	print("System>>exit: "..tostring(err))
+        --end
+        ABORT(err)
 end
 module.System["exit:"] = module.System.exit_
 

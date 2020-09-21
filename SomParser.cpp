@@ -739,9 +739,10 @@ bool Parser::parseBlockBody(Function* block, Parser::TokStream& ts)
         case Lexer::Rbrack:
             ts.next();
             block->d_end = t.d_loc;
-            if( block->d_body.isEmpty() )
-                return error("empty block bodies not supported",t);
-            else
+            // if( block->d_body.isEmpty() )
+            //    return error("empty block bodies not supported",t);
+            // NOTE: apparently empty bodies are allowed, see e.g. are-we-fast-yet JsonParser.som
+            // else
                 return true; // end of block
         default:
             return error("expecting statement", ts.peek() );

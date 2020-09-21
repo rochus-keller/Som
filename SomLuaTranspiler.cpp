@@ -137,9 +137,9 @@ struct LuaTranspilerVisitor : public Ast::Visitor
         method = m;
         out << "function ";
         if( m->d_classLevel )
-            out << "metaclass";
+            out << "_metaclass";
         else
-            out << "class";
+            out << "_class";
         out << "." << LuaTranspiler::map(m->d_name,m->d_patternType) << "(";
         int i = 0;
         out << "self";
@@ -267,7 +267,16 @@ struct LuaTranspilerVisitor : public Ast::Visitor
     {
         const bool toSuper = ms->d_receiver->keyword() == Expression::_super;
         if( toSuper )
-            out << "self._super.";
+        {
+            // out << "self._super."; // NOTE: this is wrong since it depends on the actual metatable of self
+            // e.g. SomIdentityDictionary:new actually calls SomDictionary:new, but there self._super doesn't
+            // point to the superclass of SomDictionary, but to SomDictionary, because it is the superclass
+            // of SomIdentityDictionary
+            if( ms->d_inMethod->d_classLevel )
+                out << "_metaclass._super.";
+            else
+                out << "_class._super.";
+        }
         else
         {
             out << "(";

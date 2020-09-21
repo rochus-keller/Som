@@ -39,7 +39,7 @@ public:
     ClassBrowser(QWidget *parent = 0);
     ~ClassBrowser();
 
-    bool parse(const QString& path );
+    bool parse(const QString& path , bool recursive);
 
 protected:
     void closeEvent(QCloseEvent* event);

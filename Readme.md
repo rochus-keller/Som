@@ -82,6 +82,8 @@ Here is a screenshot:
 
 ![LuaJIT Bytecode Debugger Screenshot](http://software.rochus-keller.info/screenshot_luajit_bytecode_debugger_v0.1.png)
 
+There is also a commandline version of the virtual machine called LjSOM. It supports both the Lua transpiler and LuaJIT bytecode compiler described above. LjSOM is easier to integrate in a performance measurement setup like https://github.com/smarr/are-we-fast-yet. Of the 14 benchmarks 12 already works; the remaining two are DeltaBlue and CD and are further investigated. I didn't do complete runs of the full ensemble yet; the present individual results confirm the already observed factor 4 speed-up of LjSOM compared to SOM++ M&S.
+
 
 ### Binary versions
 

@@ -68,7 +68,7 @@ struct LjBcGen: public Visitor
 
     bool inline error( const Loc& l, const QString& msg )
     {
-        qCritical() << msg << l.d_line << l.d_col;
+        qCritical() << l.d_source << ":" << l.d_line << ":" << l.d_col << ":" << msg;
         // err->error(Errors::Semantics, mod->d_file, l.d_row, l.d_col, msg );
         return false;
     }
@@ -240,24 +240,35 @@ struct LjBcGen: public Visitor
 
         for( int i = 0; i < b->d_func->d_vars.size(); i++ )
             ctx.back().sellSlots(b->d_func->d_vars[i]->d_slot );
+
+        if( b->d_func->d_body.isEmpty() )
+        {
+            const int res = ctx.back().buySlots(1);
+            slotStack.push_back(res);
+            bc.KNIL(res,1,b->d_loc.packed()); // empty blocks return nil (TODO: check if true)
+        }
     }
 
-    void inlineIf( MsgSend* s )
+    void emitReceiver( MsgSend* s, bool doInline = true )
     {
         if( s->d_receiver->keyword() == Expression::_super )
         {
             const int slot = ctx.back().buySlots(1);
-            bool toSell = false;
-            int _self = selfToSlot( &toSell, s->d_loc );
-            bc.TGET(slot,_self,"_super",s->d_loc.packed());
-            if( toSell )
-                ctx.back().sellSlots(_self);
+            bc.GGET(slot, s->d_inMethod->d_owner->d_name, s->d_loc.packed() );
+            if( !s->d_inMethod->d_classLevel )
+                bc.TGET(slot,slot,"_class",s->d_loc.packed());
+            bc.TGET(slot,slot,"_super",s->d_loc.packed());
             slotStack.push_back(slot);
-        }else if( s->d_receiver->getTag() == Thing::T_Block )
+        }else if( doInline && s->d_receiver->getTag() == Thing::T_Block )
         {
             inlineBlock( static_cast<Block*>(s->d_receiver.data()));
         }else
             s->d_receiver->accept(this);
+    }
+
+    void inlineIf( MsgSend* s )
+    {
+        emitReceiver(s);
         // the result is in slotStack.back()
         switch( s->d_flowControl )
         {
@@ -308,20 +319,7 @@ struct LjBcGen: public Visitor
         const quint32 startLoop = bc.getCurPc();
         const int res = ctx.back().buySlots(1);
 
-        if( s->d_receiver->keyword() == Expression::_super )
-        {
-            const int slot = ctx.back().buySlots(1);
-            bool toSell = false;
-            int _self = selfToSlot( &toSell, s->d_loc );
-            bc.TGET(slot,_self,"_super",s->d_loc.packed());
-            if( toSell )
-                ctx.back().sellSlots(_self);
-            slotStack.push_back(slot);
-        }else if( s->d_receiver->getTag() == Thing::T_Block )
-        {
-            inlineBlock( static_cast<Block*>(s->d_receiver.data()));
-        }else
-            s->d_receiver->accept(this);
+        emitReceiver(s);
         // the result is in slotStack.back()
         switch( s->d_flowControl )
         {
@@ -370,23 +368,12 @@ struct LjBcGen: public Visitor
             return;
         }
 
-        const bool toSuper = s->d_receiver->keyword() == Expression::_super;
-        if( toSuper )
-        {
-            const int slot = ctx.back().buySlots(1);
-            bool toSell = false;
-            int _self = selfToSlot( &toSell, s->d_loc );
-            bc.TGET(slot,_self,"_super",s->d_loc.packed());
-            if( toSell )
-                ctx.back().sellSlots(_self);
-            slotStack.push_back(slot);
-        }else
-            s->d_receiver->accept(this);
+        emitReceiver(s,false);
         // the result is in slotStack.back()
         const int args = ctx.back().buySlots( s->d_args.size() + 2, true );
         bc.TGET( args, slotStack.back(),
                  LuaTranspiler::map(s->prettyName(false),s->d_patternType), s->d_loc.packed() );
-        if( toSuper )
+        if( s->d_receiver->keyword() == Expression::_super )
         {
             bool toSell = false;
             int _self = selfToSlot( &toSell, s->d_loc );
@@ -547,9 +534,13 @@ struct LjBcGen: public Visitor
             slotStack.pop_back();
         }
 
-        Q_ASSERT( !b->d_func->d_body.isEmpty() );
-        //if( b->d_func->d_body.isEmpty() )
-        //    bc.RET(0,1,b->d_func->d_end.packed()); // return self
+        if( b->d_func->d_body.isEmpty() )
+        {
+            const int tmp = ctx.back().buySlots(1);
+            bc.KNIL(tmp,1,b->d_loc.packed());
+            bc.RET(tmp,1,b->d_func->d_end.packed()); // return nil (TODO: check)
+            ctx.back().sellSlots(tmp);
+        }
 
         bc.setVarNames( getSlotNames(b->d_func.data(),true) );
         bc.setUpvals( getUpvals() );

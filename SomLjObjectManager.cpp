@@ -297,6 +297,8 @@ struct LjObjectManager::ResolveIdents : public Visitor
                     else
                         allInline = false;
                 }
+                if( s->d_receiver->getTag() == Thing::T_Block && allInline )
+                    static_cast<Block*>( s->d_receiver.data() )->d_func->d_inline = true;
                 if( allInline )
                     s->d_flowControl = it.value();
             }
@@ -326,6 +328,19 @@ struct LjObjectManager::ResolveIdents : public Visitor
     }
 };
 
+static int loadClassByName(lua_State * L)
+{
+    const char* name = luaL_checkstring( L, 1 );
+    LjObjectManager* om = (LjObjectManager*)lua_touserdata( L, lua_upvalueindex( 1 ) );
+    if( !om->loadAtRuntime(name) )
+    {
+        foreach( const QString& str, om->getErrors() )
+            qCritical() << str.toUtf8().constData();
+    }
+    lua_getglobal( L, name );
+    return 1;
+}
+
 LjObjectManager::LjObjectManager(Lua::Engine2* lua, QObject *parent) : QObject(parent),d_lua(lua),d_genLua(false)
 {
     Q_ASSERT( d_lua );
@@ -341,9 +356,13 @@ LjObjectManager::LjObjectManager(Lua::Engine2* lua, QObject *parent) : QObject(p
     d_system = new Variable();
     d_system->d_name = Lexer::getSymbol("system"); // instance of System
     d_system->d_kind = Variable::Global;
+
+    lua_pushlightuserdata( d_lua->getCtx(), this );
+    lua_pushcclosure( d_lua->getCtx(), loadClassByName, 1);
+    lua_setglobal( d_lua->getCtx(), "loadClassByName" );
 }
 
-bool LjObjectManager::load(const QString& file, const QStringList& paths)
+bool LjObjectManager::load(const QString& mainSomFile, const QStringList& paths)
 {
     d_errors.clear();
     d_mainClass.reset();
@@ -353,10 +372,10 @@ bool LjObjectManager::load(const QString& file, const QStringList& paths)
     d_generated.clear();
 
     d_classPaths = paths;
-    d_mainPath = file;
-    QFileInfo info(file);
-    if( file.isEmpty() || !info.isFile() || !info.isReadable() )
-        return error( tr("invalid main SOM file '%1'").arg(file) );
+    d_mainPath = mainSomFile;
+    QFileInfo info(mainSomFile);
+    if( mainSomFile.isEmpty() || !info.isFile() || !info.isReadable() )
+        return error( tr("invalid main SOM file '%1'").arg(mainSomFile) );
     QDir home = info.absoluteDir();
     for( int i = 0; i < d_classPaths.size(); i++ )
     {
@@ -365,7 +384,7 @@ bool LjObjectManager::load(const QString& file, const QStringList& paths)
     }
     d_classPaths.append(home.absolutePath());
 
-    getOrLoadClass("Metaclass"); // instantiates Object and some others
+    getOrLoadClass("Metaclass"); // instantiates Object, Class and some others; must be first!
     getOrLoadClass("Class");
     getOrLoadClass("System");
     getOrLoadClass("Boolean");
@@ -383,10 +402,10 @@ bool LjObjectManager::load(const QString& file, const QStringList& paths)
 
     // We have to load an parse all classes provided in the path; otherwise we would have to detect
     // a missing class at runtime and then compile it
-    if( !parseMain(file) )
+    if( !parseMain(mainSomFile) )
         return false;
 
-#if 1
+#if 0
     foreach( Ast::Class* c, d_loadingOrder )
         qDebug() << "Loaded" << c->d_name << "sub of" << c->d_superName << ( c->d_owner ? "connected" : "" );
     if( d_loadingOrder.size() != d_classes.size() )
@@ -400,22 +419,69 @@ bool LjObjectManager::load(const QString& file, const QStringList& paths)
 
     instantiateClasses();
 
+    QByteArray code;
+    QTextStream out(&code);
+
+    // create default args, will be overwritten by actual args later
+    out << "somArgs = _primitives._inst(Array)" << endl;
+    out << "somArgs:at_put_(1,_primitives._newString(\"" << d_mainClass->d_loc.d_source.toUtf8() << "\"))" << endl;
+
     QByteArray run = "run";
     if( d_mainClass->findMethod( Lexer::getSymbol("run") ) == 0 )
         run += "_";
-    if( !d_lua->executeCmd( "function runSom() " + d_mainClass->d_name + "._class:" +
-                            run + "(_primitives._inst(Array):at_put_(1,_primitives._newString(\"" +
-                            d_mainClass->d_loc.d_source.toUtf8()+ "\"))) end") )
-        d_errors += d_lua->getLastError();
+    out << "function runSom() " << d_mainClass->d_name << "._class:" << run << "(somArgs) end" << endl;
 
+    out.flush();
+    if( !d_lua->executeCmd( code ) )
+       d_errors += d_lua->getLastError();
+
+    return d_errors.isEmpty();
+}
+
+bool LjObjectManager::loadAtRuntime(const QByteArray& className)
+{
+    d_errors.clear();
+    if( getOrLoadClass(className).isNull() )
+        return false;
+    if( !instantiateClasses() )
+        return false;
+    return true;
+}
+
+bool LjObjectManager::setArgs(const QStringList& args)
+{
+    QByteArray code;
+    QTextStream out(&code);
+    out << "somArgs = _primitives._inst(Array)" << endl;
+    out << "somArgs:at_put_(1,_primitives._newString(\"" << d_mainClass->d_loc.d_source.toUtf8() << "\"))" << endl;
+    for( int i = 0; i < args.size(); i++ )
+        out << "somArgs:at_put_(" << i+2 << ",_primitives._newString(\"" << args[i].toUtf8() << "\"))" << endl;
+    out.flush();
+
+    if( ! d_lua->executeCmd( code ) );
+       d_errors += d_lua->getLastError();
     return d_errors.isEmpty();
 }
 
 bool LjObjectManager::run()
 {
-    if( !d_lua->executeCmd( "runSom()") )
+    if( !d_lua->executeCmd( "runSom()" ) )
         d_errors += d_lua->getLastError();
     return d_errors.isEmpty();
+}
+
+void LjObjectManager::generateSomPrimitives()
+{
+    const QString outpath = pathInDir("Lua", "SomPrimitives.lua");
+    const QString inpath = ":/SomPrimitives.lua";
+    QPair<QString,QString> pair(inpath,outpath);
+    if( d_generated.contains(pair) )
+        return;
+
+    QFile in(inpath);
+    in.open(QIODevice::ReadOnly);
+    if( d_lua->saveBinary( in.readAll(), inpath.toUtf8(), outpath.toUtf8() ) )
+        d_generated.append(pair);
 }
 
 QByteArrayList LjObjectManager::getClassNames() const
@@ -476,7 +542,7 @@ bool LjObjectManager::error(const Ast::Loc& loc, const QString& msg)
 bool LjObjectManager::error(const QString& msg)
 {
     d_errors += msg;
-    qCritical() << msg.toUtf8().constData();
+    // qCritical() << msg.toUtf8().constData();
     return false;
 }
 
@@ -547,8 +613,9 @@ Ast::Ref<Class> LjObjectManager::getOrLoadClass(const QByteArray& name)
     if( loaded )
     {
         if( !loadAndSetSuper( cls.data() ) )
-            return false;
-        handleUnresolved();
+            return 0;
+        if( !handleUnresolved() )
+            return 0;
     }
     return cls;
 }
@@ -590,7 +657,6 @@ bool LjObjectManager::handleUnresolved()
             d_unresolved[i]->d_resolved = cls.data();
         }else
         {
-            cls = getOrLoadClassImp( d_unresolved[i]->d_ident.constData() );
             error( d_unresolved[i]->d_loc, tr("cannot resolve identifier '%1").arg(
                        d_unresolved[i]->d_ident.constData()) );
         }
@@ -600,6 +666,24 @@ bool LjObjectManager::handleUnresolved()
     return d_errors.isEmpty();
 }
 
+static QSet<QByteArray> methodNamesOf(Ast::Class* cls, bool classLevel )
+{
+    QSet<QByteArray> res;
+    if( cls->d_owner )
+    {
+        Q_ASSERT( cls->d_owner->getTag() == Ast::Thing::T_Class );
+        Ast::Class* super = static_cast<Ast::Class*>(cls->d_owner);
+        res = methodNamesOf( super, classLevel );
+    }
+    for( int i = 0; i < cls->d_methods.size(); i++ )
+    {
+        Ast::Method* m = cls->d_methods[i].data();
+        if( ( classLevel && m->d_classLevel ) || ( !classLevel && !m->d_classLevel ) )
+            res.insert( m->d_name );
+    }
+    return res;
+}
+
 bool LjObjectManager::instantiateClasses()
 {
     const int top = lua_gettop(d_lua->getCtx());
@@ -607,20 +691,42 @@ bool LjObjectManager::instantiateClasses()
 
     const int oldInstantiated = d_instantiated;
     while( d_instantiated < d_loadingOrder.size() )
-        instantiateClass( d_loadingOrder[ d_instantiated++ ] );
+    {
+        instantiateClass( d_loadingOrder[ d_instantiated ] );
+        if( firstRun && d_loadingOrder[d_instantiated]->d_name.constData() == _Class.constData() )
+        {
+            lua_State* L = d_lua->getCtx();
+            Q_ASSERT( d_instantiated == 1 ); // Class comes directly after Object
+            lua_getglobal( L, _Object.constData() );
+            Q_ASSERT( !lua_isnil(L,-1) );
+            const int objectMeta = lua_gettop(L);
+            lua_getglobal( L, _Class.constData() );
+            Q_ASSERT( !lua_isnil(L,-1) );
+            const int classMeta = lua_gettop(L);
+            lua_getfield( L, classMeta, "_class" );
+            Q_ASSERT( !lua_isnil( L, -1 ) );
+            const int _class = lua_gettop(L);
+            lua_pushvalue( L, _class);
+            lua_setfield( L, objectMeta, "_super" ); // Object -> nil, Object Meta -> Class
+
+            QSet<QByteArray> classMethodNames = methodNamesOf( d_loadingOrder[d_instantiated], false);
+            QSet<QByteArray>::const_iterator i;
+            for( i = classMethodNames.begin(); i != classMethodNames.end(); ++i )
+            {
+                const QByteArray name = LuaTranspiler::map(*i);
+                lua_getfield( L, _class, name.constData() );
+                lua_setfield( L, objectMeta, name.constData() );
+            }
+            // NOTE: Object has no class methods, so we don't overwrite something
+
+            lua_pop(L,3); // objectMeta, classMeta, _class
+        }
+        d_instantiated++;
+    }
 
     if( firstRun )
     {
         lua_State* L = d_lua->getCtx();
-
-        lua_getglobal( L, _Object.constData() );
-        Q_ASSERT( !lua_isnil(L,-1) );
-        lua_getglobal( L, _Class.constData() );
-        Q_ASSERT( !lua_isnil(L,-1) );
-        lua_getfield( L, -1, "_class" );
-        Q_ASSERT( !lua_isnil( L, -1 ) );
-        lua_setfield( L, -3, "_super" ); // Object -> nil, Object Meta -> Class
-        lua_pop(L,2);
 
         lua_pushnil(L);
         lua_getglobal( L, "Nil" );
@@ -660,25 +766,7 @@ bool LjObjectManager::instantiateClasses()
         compileMethods( d_loadingOrder[i] );
 
     Q_ASSERT( top == lua_gettop(d_lua->getCtx()) );
-    return true;
-}
-
-static QSet<QByteArray> methodNamesOf(Ast::Class* cls, bool classLevel )
-{
-    QSet<QByteArray> res;
-    if( cls->d_owner )
-    {
-        Q_ASSERT( cls->d_owner->getTag() == Ast::Thing::T_Class );
-        Ast::Class* super = static_cast<Ast::Class*>(cls->d_owner);
-        res = methodNamesOf( super, classLevel );
-    }
-    for( int i = 0; i < cls->d_methods.size(); i++ )
-    {
-        Ast::Method* m = cls->d_methods[i].data();
-        if( ( classLevel && m->d_classLevel ) || ( !classLevel && !m->d_classLevel ) )
-            res.insert( m->d_name );
-    }
-    return res;
+    return d_errors.isEmpty();
 }
 
 static QByteArrayList fieldsOf(Ast::Class* cls, bool classLevel )
@@ -727,11 +815,20 @@ bool LjObjectManager::instantiateClass(Ast::Class* cls)
     lua_pushstring( L, cls->d_name.constData() );
     lua_setfield( L, classT, "_name" );
 
+    lua_pushstring( L, ( cls->d_name + " class" ).constData() );
+    lua_setfield( L, metaT, "_name" );
+
     lua_pushvalue( L, classT );
     lua_setfield( L, metaT, "_class" );
 
+#if 0
+    qDebug() << "Class" << cls->d_name << lua_topointer( L, classT );
+    qDebug() << "Meta" << cls->d_name << lua_topointer( L, metaT );
+#endif
+
     lua_pushvalue( L, classT );
     lua_setfield( L, classT, "__index" ); // instances of class can access the methods in classT
+    // not needed on meta level because there are no direct instances
 
     if( cls->d_superName.constData() != _nil.constData() )
     {
@@ -748,6 +845,12 @@ bool LjObjectManager::instantiateClass(Ast::Class* cls)
         lua_pushvalue( L, superT );
         lua_setfield( L, classT, "_super" );
 
+#if 0
+        qDebug() << "Super of Class" << cls->d_name << lua_topointer( L, classT )
+                << "Class" << cls->d_superName << lua_topointer( L, superT );
+        qDebug() << "Super of Meta" << cls->d_name << lua_topointer( L, metaT )
+                 << "Meta" << cls->d_superName << lua_topointer( L, superMetaT );
+#endif
         lua_pop( L, 1 ); // superT
         lua_pop( L, 1 ); // superMetaT
 
@@ -775,7 +878,7 @@ bool LjObjectManager::instantiateClass(Ast::Class* cls)
     lua_pop(L,1); // metaT
     lua_pop(L,1); // classT
 
-#if 1
+#if 0
     QFile out( pathInDir("Ast",  cls->d_name + ".txt" ) );
     if( !out.open(QIODevice::WriteOnly) )
         qDebug() << "cannot open for writing:" << out.fileName();
@@ -869,8 +972,10 @@ bool LjObjectManager::compileMethods(Ast::Class* cls)
                 fromName = "^" + fromName; // class level primitives are prefixed
             // copy the method from the Primitives implementation (even nil)
             lua_getfield(L,primitivesT, fromName.constData() );
+#if 0
             if( lua_isnil(L,-1) )
                 qWarning() << "primitive" << cls->d_name << m->d_name << "not implemented";
+#endif
 
             if( m->d_classLevel )
                 lua_setfield(L,metaT,toName.constData() );
@@ -890,8 +995,18 @@ bool LjObjectManager::compileMethods(Ast::Class* cls)
     lua_pop(L,1); // metaT
     lua_pop(L,1); // classT
 
+#if 1
+    if( luaL_dofile( L, out.fileName().toUtf8().constData() ) != 0 )
+    {
+         error( lua_tostring(L, -1) );
+         lua_pop( L, 1 );
+         return false;
+    }
+#else
     if( !d_lua->executeFile( out.fileName().toUtf8() ) )
         error(d_lua->getLastError());
+#endif
+
 
     return true;
 }
@@ -901,8 +1016,8 @@ void LjObjectManager::writeLua(QIODevice* out, Class* cls)
     QTextStream ts( out );
     ts << tr("-- generated by SomLjVirtualMachine on ") << QDateTime::currentDateTime().toString() << endl << endl;
 
-    ts << "local metaclass = " << cls->d_name << endl;
-    ts << "local class = " << cls->d_name << "._class" << endl;
+    ts << "local _metaclass = " << cls->d_name << endl;
+    ts << "local _class = " << cls->d_name << "._class" << endl;
     ts << "local function _block(f) local t = { _f = f }; setmetatable(t,Block._class); return t end" << endl;
     // ts << "local function _nil(p) TRAP( p == nil ); return p end" << endl;
     ts << "local _str = _primitives._newString" << endl;
@@ -911,7 +1026,7 @@ void LjObjectManager::writeLua(QIODevice* out, Class* cls)
     ts << "local _lit = _primitives._newLit" << endl;
     ts << "local _cl = _primitives._checkLoad" << endl << endl;
 
-    ts << "class.__unm = _primitives.__unm" << endl << endl; // each instance becomes convertible to a number
+    ts << "_class.__unm = _primitives.__unm" << endl << endl; // each instance becomes convertible to a number
 
     for( int i = 0; i < cls->d_methods.size(); i++ )
     {

@@ -42,7 +42,7 @@ static void loadLuaLib( Lua::Engine2* lua, const QByteArray& name )
     QFile lib( QString(":/%1.lua").arg(name.constData()) );
     lib.open(QIODevice::ReadOnly);
     if( !lua->addSourceLib( lib.readAll(), name ) )
-        qCritical() << "compiling" << name << ":" << lua->getLastError();
+        qCritical() << "compiling" << name << ":" << lua->getLastError().constData();
 }
 
 #define lj_rol(x, n)	(((x)<<(n)) | ((x)>>(-(int)(n)&(8*sizeof(x)-1))))
@@ -227,6 +227,7 @@ LjVirtualMachine::LjVirtualMachine(QObject* parent) : QObject(parent)
     lua_pushcfunction( d_lua->getCtx(), Engine2::ABORT );
     lua_setglobal( d_lua->getCtx(), "ABORT" );
 
+
 #ifdef ST_SET_JIT_PARAMS_BY_LUA
     // works in principle, but the JIT runs about 5% slower than when directly set via lj_jit.h
     QByteArray cmd = "jit.opt.start(";
@@ -236,7 +237,7 @@ LjVirtualMachine::LjVirtualMachine(QObject* parent) : QObject(parent)
     cmd += "\"sizemcode=64\",";
     cmd += "\"maxmcode=4096\")";
     if( !d_lua->executeCmd(cmd) )
-        qCritical() << "error initializing JIT:" << d_lua->getLastError();
+        qCritical() << "error initializing JIT:" << d_lua->getLastError().constData();
 #endif
 
     d_om = new LjObjectManager( d_lua, this );
@@ -247,7 +248,13 @@ bool LjVirtualMachine::load(const QString& file, const QString& paths)
     QStringList classPaths = paths.isEmpty() ? QStringList() : paths.split(':');
     classPaths.prepend(":/Smalltalk");
     loadLuaLib( d_lua, "SomPrimitives");
-    return d_om->load(file,classPaths);
+    if( !d_om->load(file,classPaths) )
+    {
+        foreach( const QString& str, d_om->getErrors() )
+            qCritical() << str.toUtf8().constData();
+        return false;
+    }else
+        return true;
 }
 
 void LjVirtualMachine::run(bool useJit, bool useProfiler)
@@ -261,8 +268,8 @@ void LjVirtualMachine::run(bool useJit, bool useProfiler)
 
     if( !d_om->run() )
     {
-        //qCritical() << d_om->getErrors();
-        //QMessageBox::critical( 0, tr("Lua Error"), d_om->getErrors().join("\n") );
+        foreach( const QString& str, d_om->getErrors() )
+            qCritical() << str.toUtf8().constData();
     }
 }
 
@@ -303,7 +310,7 @@ void LjVirtualMachine::onNotify(int messageType, QByteArray val1, int val2)
     case Lua::Engine2::Error:
         {
             Engine2::ErrorMsg msg = Engine2::decodeRuntimeMessage(val1);
-            qCritical() << "ERR" << msg.d_source.constData() <<
+            qCritical() << msg.d_source.constData() <<
                            JitComposer::unpackRow2(msg.d_line) <<
                         JitComposer::unpackCol2(msg.d_line) << msg.d_message.constData();
         }
@@ -317,7 +324,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Som");
     a.setApplicationName("SOM on LuaJIT");
-    a.setApplicationVersion("0.7.1");
+    a.setApplicationVersion("0.7.2");
     a.setStyle("Fusion");
 
     QString somFile;
@@ -329,6 +336,7 @@ int main(int argc, char *argv[])
     bool interactive = false;
     bool debugger = false;
     bool useJit = true;
+    QStringList extraArgs;
     const QStringList args = QCoreApplication::arguments();
     for( int i = 1; i < args.size(); i++ ) // arg 0 enthaelt Anwendungspfad
     {
@@ -371,7 +379,7 @@ int main(int argc, char *argv[])
             lua = true;
             if( i+1 >= args.size() )
             {
-                qCritical() << "error: invalid -pro option" << endl;
+                qCritical() << "error: invalid -pro option";
                 return -1;
             }else
             {
@@ -382,7 +390,7 @@ int main(int argc, char *argv[])
         {
             if( i+1 >= args.size() )
             {
-                qCritical() << "error: invalid -cp option" << endl;
+                qCritical() << "error: invalid -cp option";
                 return -1;
             }else
             {
@@ -391,15 +399,13 @@ int main(int argc, char *argv[])
             }
         }else if( !args[ i ].startsWith( '-' ) )
         {
-            if( !somFile.isEmpty() )
-            {
-                qCritical() << "error: can only load one image file" << endl;
-                return -1;
-            }
-            somFile = args[ i ];
+            if( somFile.isEmpty() )
+                somFile = args[ i ];
+            else
+                extraArgs += args[ i ];
         }else
         {
-            qCritical() << "error: invalid command line option " << args[i] << endl;
+            qCritical() << "error: invalid command line option " << args[i];
             return -1;
         }
     }
@@ -416,6 +422,8 @@ int main(int argc, char *argv[])
     if( !vm.load(somFile, somPaths) )
         return -1;
 
+    vm.getOm()->setArgs(extraArgs);
+
     if( ide )
     {
         LuaIde win( vm.getLua() );
@@ -423,6 +431,7 @@ int main(int argc, char *argv[])
         win.getProject()->addBuiltIn("toaddress");
         win.getProject()->addBuiltIn("_primitives");
         win.getProject()->addBuiltIn("hashOf");
+        win.getProject()->addBuiltIn("loadClassByName");
         foreach( const QByteArray& n, vm.getClassNames() )
             win.getProject()->addBuiltIn(n);
         if( !proFile.isEmpty() )
@@ -440,8 +449,8 @@ int main(int argc, char *argv[])
         if( debugger )
         {
             BcDebugger win( vm.getLua() );
+            vm.getOm()->generateSomPrimitives();
             LjObjectManager::GeneratedFiles gf = vm.getOm()->getGenerated();
-            gf.prepend( qMakePair(QString(":/SomPrimitives.lua"),vm.getOm()->pathInDir("Lua", "SomPrimitives.lua") ) );
             win.initializeFromFiles( gf, QFileInfo(somFile).absolutePath()+"/Lua", "runSom()" );
             //vm.run(useJit,useProfiler);
             return a.exec();

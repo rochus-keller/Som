@@ -359,7 +359,7 @@ static QStringList collectFiles( const QDir& dir, bool recursive = false )
     return res;
 }
 
-bool ClassBrowser::parse(const QString& path)
+bool ClassBrowser::parse(const QString& path, bool recursive)
 {
     QDir dir(":/Smalltalk");
     QStringList paths;
@@ -371,7 +371,7 @@ bool ClassBrowser::parse(const QString& path)
     if( info.isDir() )
     {
         dir = path;
-        paths += collectFiles(dir, false);
+        paths += collectFiles(dir, recursive);
         qDebug() << "parsing" << paths.size() << "files";
     }else
         paths += path;
@@ -1239,23 +1239,43 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Som");
     a.setApplicationName("SOM Class Browser");
-    a.setApplicationVersion("0.2");
+    a.setApplicationVersion("0.3");
     a.setStyle("Fusion");
 
     ClassBrowser w;
     w.show();
 
-    bool res;
-    if( a.arguments().size() > 1 )
-        res = w.parse( a.arguments()[1] );
-    else
+    bool recursive = false;
+    QString path;
+
+    const QStringList args = QCoreApplication::arguments();
+    for( int i = 1; i < args.size(); i++ ) // arg 0 enthaelt Anwendungspfad
+    {
+        if( args[i] == "-r" )
+        {
+            recursive = true;
+        }else if( !args[ i ].startsWith( '-' ) )
+        {
+            if( !path.isEmpty() )
+            {
+                qCritical() << "error: can only load one path" << endl;
+                return -1;
+            }
+            path = args[ i ];
+        }else
+        {
+            qCritical() << "error: invalid command line option " << args[i] << endl;
+            return -1;
+        }
+    }
+
+    if( path.isEmpty() )
     {
         const QString path = QFileDialog::getExistingDirectory(&w,ClassBrowser::tr("Open SOM Source Directory") );
         if( path.isEmpty() )
             return 0;
-        res = w.parse(path);
     }
-    if( !res )
+    if( !w.parse(path, recursive) )
         return -1;
     return a.exec();
 }
