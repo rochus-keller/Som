@@ -64,17 +64,17 @@ Here is a screenshot:
 
 ### A SOM to LuaJIT bytecode compiler and debugger
 
-This is currently work in progress. Hello.som, the Benchmarks package and most of the TestHarness tests work. I implemented the same inlining of ifTrue/ifFalse as in SOM++ (CSOM doesn't seem to make inlining) plus inlining of whileTrue/whileFalse as in ST80. The performance is currently about factor two of the Lua transpiler version (see table). The object model mapping is identical to the one used by the Lua transpiler (see above). In contrast to the Lua transpiler the bytecode compiler doesn't use pcall, but a second return arugument to implement non-local returns. The same deviations from CSOM/SOM++ apply like in the Lua transpiler version (see above). 
+This is currently work in progress. Hello.som, the Benchmarks package and most of the TestHarness tests work. I implemented the same inlining of ifTrue/ifFalse as in SOM++ (CSOM doesn't seem to make inlining) plus inlining of whileTrue/whileFalse as in ST80. The performance is currently about factor two of the Lua transpiler version (see table). The object model mapping is identical to the one used by the Lua transpiler (see above). In contrast to the Lua transpiler the bytecode compiler doesn't use pcall, but a second return arugument to implement non-local returns. The same deviations from CSOM/SOM++ apply like in the Lua transpiler version (see above). Here are the results of running Examples/Benchmarks/All.som on my test machine:
 
 Version | (Fixed) Summed Average Runtime [ms] | Speed-down factor
 --- | --- | ---
-CSOM | 8604 | 18
-SOM++ copying collector | 3425 | 7
-SOM++ mark-sweep | 1874 | 4
-LjVM Lua | 746 | 2
-LjVM bytecode (bc) | 733 | 2
-LjVM bc if inlined | 485 | 1
-LjVM bc if & while inlined | 468 | 1
+CSOM | 8604 | 18.4
+SOM++ copying collector | 3425 | 7.3
+SOM++ mark-sweep | 1874 | 4.0
+LjVM Lua | 746 | 1.6
+LjVM bytecode (bc) | 733 | 1.6
+LjVM bc if inlined | 485 | 1.0 
+LjVM bc if & while inlined | 468 | 1.0 
 
 The VM includes my bytecode debugger (see https://github.com/rochus-keller/LjTools/#luajit-bytecode-debugger); it can be enabled by the -dbg command line option; you can set breakpoints and step through the Lua code, watching the stack trace and the local variable values.
 
@@ -82,8 +82,20 @@ Here is a screenshot:
 
 ![LuaJIT Bytecode Debugger Screenshot](http://software.rochus-keller.info/screenshot_luajit_bytecode_debugger_v0.1.png)
 
-There is also a commandline version of the virtual machine called LjSOM. It supports both the Lua transpiler and LuaJIT bytecode compiler described above. LjSOM is easier to integrate in a performance measurement setup like https://github.com/smarr/are-we-fast-yet. Of the 14 benchmarks 12 already works; the remaining two are DeltaBlue and CD and are further investigated. I didn't do complete runs of the full ensemble yet; the present individual results confirm the already observed factor 4 speed-up of LjSOM compared to SOM++ M&S.
+There is also a commandline version of the virtual machine called LjSOM. It supports both the Lua transpiler and LuaJIT bytecode compiler described above. LjSOM is easier to integrate in a performance measurement setup like https://github.com/smarr/are-we-fast-yet. Of the 14 benchmarks 12 already work (note that CD neither works on SOM++); the remaining two are DeltaBlue and CD and are further investigated. I was able to run the 12 benchmarks on LjSOM, SOM++ and CSOM on my test machine (see above) using run_are-we-fast-yet.sh (see Results folder). The results are documented in Are-we-fast-yet_Results.ods; here is a summary table:
 
+Version | Runtime geometric mean [us] | Speed-down factor
+--- | --- | ---
+CSOM | 155'018* | 15.9*
+SOM++ copying collector | 206'990 | 7.9
+SOM++ mark-sweep | 111'867 | 4.3
+LjSOM 0.7.2 | 26'140 | 1
+
+*Note: CSOM wasn't able to run Json (run out of lexer reading buffer space) and Havlak (not enough heap), so the overall comparison makes no sense; the provided values only represent the subset.
+
+Note that CSOM and SOM++ with copying collector were built with default settings (i.e. just cloned the Github repository and run the build script). I assume these were the versions used to obtain the measurement results presented on http://som-st.github.io/. Since I didn't use the same number of iterations as suggested in rebench.conf of https://github.com/smarr/are-we-fast-yet I use the geometric mean of the 12 benchmark averages for comparison (as it is e.g. recommended by The Computer Language Benchmarks Game).
+
+Concerning the present LuaJIT performance it has to be noted that with the current implementation of my bytecode compiler Blocks are represented by closures (unless inlined) and each run potentially requires a closure instantiation (FNEW bytecode) which is not supported by the current version of the LuaJIT tracing compiler. 
 
 ### Binary versions
 
