@@ -21,6 +21,8 @@ QT       += core
 QT       -= gui
 
 TARGET = LjSOM
+CONFIG   += console
+CONFIG   -= app_bundle
 TEMPLATE = app
 
 INCLUDEPATH += .. ../LuaJIT/src
