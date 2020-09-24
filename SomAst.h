@@ -199,7 +199,6 @@ namespace Ast
         Scope* d_owner;
         Named():d_owner(0){}
         virtual bool classLevel() const { return false; }
-        virtual void markAsUpvalSource(Scope*) {}
     };
 
     struct Scope : public Named
@@ -226,13 +225,13 @@ namespace Ast
         quint8 d_syntaxLevel, d_inlinedLevel; // 0 is method
         bool d_inline;
         bool d_upvalSource;
-        Function():d_upvalSource(false),d_syntaxLevel(0),d_inlinedLevel(0),d_inline(0){}
+        Function* d_lowestUpvalueSource;
+        Function():d_upvalSource(false),d_syntaxLevel(0),d_inlinedLevel(0),d_inline(0),d_lowestUpvalueSource(0){}
         Variable* findVar( const QByteArray& ) const;
         int getTag() const { return T_Func; }
         void addVar(Variable*);
         int getParamCount() const;
         bool isFunc() const { return true; }
-        void markAsUpvalSource(Scope* scope);
         Function* inlinedOwner() const;
     };
 

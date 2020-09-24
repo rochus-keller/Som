@@ -32,5 +32,6 @@
         <file>images/breakpoint.png</file>
         <file>images/marker.png</file>
         <file>images/break-marker.png</file>
+        <file>LjTraceDump.lua</file>
     </qresource>
 </RCC>

@@ -38,7 +38,7 @@ namespace Som
     public:
         explicit LjSOM(QObject *parent = 0);
         bool load(const QString& file, const QString& paths = QString() );
-        bool run(bool useJit = true, const QStringList& extraArgs = QStringList());
+        bool run(bool useJit = true, bool trace = false, const QStringList& extraArgs = QStringList());
         Lua::Engine2* getLua() const { return d_lua; }
         QStringList getLuaFiles() const;
         QByteArrayList getClassNames() const;

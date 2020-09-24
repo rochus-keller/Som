@@ -64,7 +64,7 @@ Here is a screenshot:
 
 ### A SOM to LuaJIT bytecode compiler and debugger
 
-This is currently work in progress. Hello.som, the Benchmarks package and most of the TestHarness tests work. I implemented the same inlining of ifTrue/ifFalse as in SOM++ (CSOM doesn't seem to make inlining) plus inlining of whileTrue/whileFalse as in ST80. The performance is currently about factor two of the Lua transpiler version (see table), so not really good yet. The object model mapping is identical to the one used by the Lua transpiler (see above). In contrast to the Lua transpiler the bytecode compiler doesn't use pcall, but a second return arugument to implement non-local returns. The same deviations from CSOM/SOM++ apply like in the Lua transpiler version (see above). Here are the results of running Examples/Benchmarks/All.som on my test machine:
+This is currently work in progress. Hello.som, the Benchmarks package and most of the TestHarness tests work. I implemented the same inlining of ifTrue/ifFalse as in SOM++ (CSOM doesn't seem to make inlining) plus inlining of whileTrue/whileFalse as in ST80. The performance is currently about factor two of the Lua transpiler version (see table), so not really good yet, because the influence of the JIT is rather minimal (see below). The object model mapping is identical to the one used by the Lua transpiler (see above). In contrast to the Lua transpiler the bytecode compiler doesn't use pcall, but a second return arugument to implement non-local returns. The same deviations from CSOM/SOM++ apply like in the Lua transpiler version (see above). Here are the results of running Examples/Benchmarks/All.som on my test machine:
 
 Version | (Fixed) Summed Average Runtime [ms] | Speed-down factor
 --- | --- | ---
@@ -73,8 +73,10 @@ SOM++ copying collector | 3425 | 7.3
 SOM++ mark-sweep | 1874 | 4.0
 LjVM Lua | 746 | 1.6
 LjVM bytecode (bc) | 733 | 1.6
+LjVM bytecode nojit | 835 | 1.8
 LjVM bc if inlined | 485 | 1.0 
 LjVM bc if & while inlined | 468 | 1.0 
+LjVM bc if & while inl. nojit | 494 | 1.1 
 
 The VM includes my bytecode debugger (see https://github.com/rochus-keller/LjTools/#luajit-bytecode-debugger); it can be enabled by the -dbg command line option; you can set breakpoints and step through the Lua code, watching the stack trace and the local variable values.
 
@@ -96,7 +98,7 @@ LjSOM 0.7.2 | 26'140 | 1
 
 Note that CSOM and SOM++ with copying collector were built with default settings (i.e. just cloned the Github repository and run the build script). I assume these were the versions used to obtain the measurement results presented on http://som-st.github.io/. Since I didn't use the same number of iterations as suggested in rebench.conf of https://github.com/smarr/are-we-fast-yet I use the geometric mean of the 12 benchmark averages for comparison (as it is e.g. recommended by The Computer Language Benchmarks Game).
 
-Concerning the present LuaJIT performance it has to be noted that with the current implementation of my bytecode compiler Blocks are represented by closures (unless inlined) and each run potentially requires a closure instantiation (FNEW bytecode) which is not supported by the current version of the LuaJIT tracing compiler. It is therefore not surprising that the JIT has only a minimal influence (factor 0.2). The version of the benchmark written in Lua performs much better, with a speedup factor of 24 (see Are-we-fast-yet_Results.ods).
+Concerning the present LuaJIT performance it has to be noted that with the current implementation of my bytecode compiler Blocks are represented by closures (unless inlined) and each run potentially requires a closure instantiation (FNEW bytecode) which is not supported by the current version of the LuaJIT tracing compiler (NYI). It is therefore not surprising that the JIT has only a minimal influence (factor 0.1 to 0.2). The version of the benchmark written in Lua performs much better, with a speedup factor of 24 (see Are-we-fast-yet_Results.ods). Here is a log recorded with LjSOM running Benchmarks/All.som: [LjSOM_0.7.3_Benchmarks_All_trace_log.pdf](http://software.rochus-keller.info/LjSOM_0.7.3_Benchmarks_All_trace_log.pdf). Bytecode 48 (n=227) is UCLO and bytecode 49 (n=251) is FNEW, both required to instantiate closures. Of the 892 attempts of the JIT tracer 767 failed; 493 of which directly because of the not supported bytecodes, and 185 because of re-attempting blacklisted traces. I will next try to take FNEW and UCLO out of loops as far as possible.
 
 ### Binary versions
 

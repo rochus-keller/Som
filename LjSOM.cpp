@@ -132,12 +132,63 @@ bool LjSOM::load(const QString& file, const QString& paths)
     return d_om->load(file,classPaths);
 }
 
-bool LjSOM::run(bool useJit, const QStringList& extraArgs)
+#if 0
+static int dump_trace(lua_State* L)
+{
+    // args: what, tr, func, pc, otr, oex
+    qDebug() << "trace"
+             << lua_tostring( L, 1 ) // what
+             << lua_tostring( L, 2 ) // trace number
+             << lua_topointer( L, 3 ) // the function
+             << lua_tostring( L, 4 ); // the pc
+    return 0;
+}
+#endif
+
+static void printJitInfo(lua_State* L, QTextStream& out)
+{
+    int n;
+    const char *s;
+    lua_getfield(L, LUA_REGISTRYINDEX, "_LOADED");
+    lua_getfield(L, -1, "jit");  /* Get jit.* module table. */
+    lua_remove(L, -2);
+    lua_getfield(L, -1, "status");
+    lua_remove(L, -2);
+    n = lua_gettop(L);
+    lua_call(L, 0, LUA_MULTRET);
+    out << (lua_toboolean(L, n) ? "JIT: ON" : "JIT: OFF");
+    for (n++; (s = lua_tostring(L, n)); n++) {
+        out << ' ' << s;
+    }
+    out << endl;
+}
+
+bool LjSOM::run(bool useJit, bool trace, const QStringList& extraArgs)
 {
     if( !useJit )
         luaJIT_setmode( d_lua->getCtx(), 0, LUAJIT_MODE_ENGINE | LUAJIT_MODE_OFF );
+    else if( trace )
+    {
+#if 0
+        lua_getglobal( d_lua->getCtx(), "jit" );
+        lua_getfield( d_lua->getCtx(), -1, "attach" );
+        lua_pushcfunction( d_lua->getCtx(), dump_trace );
+        lua_pushliteral( d_lua->getCtx(), "trace" );
+        const int err = lua_pcall( d_lua->getCtx(), 2, 0, 0 );
+        Q_ASSERT( err == 0 );
+        lua_pop(d_lua->getCtx(),1); // jit
+#else
+        loadLuaLib( d_lua, "LjTraceDump");
+#endif
+    }
 
+    QTextStream out(stdout);
     d_om->setArgs(extraArgs);
+
+    out << "based on " << LUAJIT_VERSION << " " << LUAJIT_COPYRIGHT << " " << LUAJIT_URL << endl;
+    printJitInfo(d_lua->getCtx(),out);
+    out << endl;
+
     return d_om->run();
 }
 
@@ -192,17 +243,18 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("http://github.com/rochus-keller/Som");
     a.setApplicationName("LjSOM");
-    a.setApplicationVersion("0.7.2");
+    a.setApplicationVersion("0.7.3");
 
     QTextStream out(stdout);
 
     out << a.applicationName() << " version: " << a.applicationVersion() <<
-                 " license: GPL; see " <<  a.organizationDomain().toUtf8()  << endl << endl;
+                 " license: GPL; see " <<  a.organizationDomain().toUtf8()  << endl;
 
     QString somFile;
     QString somPaths;
     bool lua = false;
     bool useJit = true;
+    bool trace = false;
     QStringList extraArgs;
     const QStringList args = QCoreApplication::arguments();
     for( int i = 1; i < args.size(); i++ ) // arg 0 enthaelt Anwendungspfad
@@ -216,12 +268,15 @@ int main(int argc, char *argv[])
             out << "            the Smalltalk files are integrated in the executable" << endl;
             out << "  -lua      generate Lua source code instead of bytecode" << endl;
             out << "  -nojit    switch off JIT" << endl;
+            out << "  -trace    output tracer results" << endl;
             out << "  -h        display this information" << endl;
             return 0;
         }else if( args[i] == "-lua" )
                     lua = true;
         else if( args[i] == "-nojit" )
                     useJit = false;
+        else if( args[i] == "-trace" )
+                    trace = true;
         else if( args[i] == "-cp" )
         {
             if( i+1 >= args.size() )
@@ -257,7 +312,7 @@ int main(int argc, char *argv[])
     if( !vm.load(somFile, somPaths) )
         return -1;
 
-    if( vm.run(useJit,extraArgs) )
+    if( vm.run(useJit,trace,extraArgs) )
         return 0;
     else
         return -1;

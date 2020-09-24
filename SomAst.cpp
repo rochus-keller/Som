@@ -218,24 +218,10 @@ int Function::getParamCount() const
     return res;
 }
 
-void Function::markAsUpvalSource(Scope* scope)
-{
-    if( scope != this )
-    {
-        d_upvalSource = true;
-        if( d_inline )
-        {
-            Function* owner = inlinedOwner();
-            Q_ASSERT( owner );
-            owner->d_upvalSource = true;
-        }
-    }
-}
-
 Function*Function::inlinedOwner() const
 {
     if( !d_owner->isFunc() )
-        return 0;
+        return const_cast<Function*>(this);
     Function* owner = static_cast<Function*>( d_owner );
     while( owner->d_inline )
     {

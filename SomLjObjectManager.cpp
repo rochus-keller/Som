@@ -60,17 +60,14 @@ using namespace Som::Ast;
 
     Internal names: _primitives, _name, _super, _class, _meta, _fields
   */
-/*
-    TODO:
-    support unknownGlobal: name methods
-*/
+
 struct LjObjectManager::ResolveIdents : public Visitor
 {
     QList<Scope*> stack;
     LjObjectManager* mdl;
     Method* meth;
     QList<Ident*> unresolved;
-    typedef QHash<const char*,FlowControl> ToInline;
+    typedef QHash<const char*,QPair<FlowControl,int> > ToInline;
     ToInline d_toInline;
     QList<Block*> blocks;
     bool inAssig;
@@ -78,11 +75,11 @@ struct LjObjectManager::ResolveIdents : public Visitor
 
     ResolveIdents()
     {
-        d_toInline.insert( Lexer::getSymbol("ifTrue:").constData(), IfTrue); // ST80
-        d_toInline.insert( Lexer::getSymbol("ifFalse:").constData(), IfFalse); // ST80
-        d_toInline.insert( Lexer::getSymbol("ifTrue:ifFalse:").constData(), IfElse); // ST80
-        d_toInline.insert( Lexer::getSymbol("whileFalse:").constData(), WhileFalse); // ST80
-        d_toInline.insert( Lexer::getSymbol("whileTrue:").constData(), WhileTrue); // ST80
+        d_toInline.insert( Lexer::getSymbol("ifTrue:").constData(), qMakePair(IfTrue,1)); // ST80
+        d_toInline.insert( Lexer::getSymbol("ifFalse:").constData(), qMakePair(IfFalse,1)); // ST80
+        d_toInline.insert( Lexer::getSymbol("ifTrue:ifFalse:").constData(), qMakePair(IfElse,2)); // ST80
+        d_toInline.insert( Lexer::getSymbol("whileFalse:").constData(), qMakePair(WhileFalse,1)); // ST80
+        d_toInline.insert( Lexer::getSymbol("whileTrue:").constData(), qMakePair(WhileTrue,1)); // ST80
 #if 0
         d_toInline.insert( Lexer::getSymbol("timesRepeat:"));
 #endif
@@ -159,8 +156,17 @@ struct LjObjectManager::ResolveIdents : public Visitor
             b->d_func->d_vars[i]->d_inlinedOwner = owner;
     }
 
+    static inline QString printLoc(const Loc& loc )
+    {
+        return QString("%1:%2:%3").arg(QFileInfo(loc.d_source).baseName()).arg(loc.d_line).arg(loc.d_col);
+    }
     void visit( Block* b)
     {
+#if 0
+        qDebug() << ( b->d_func->d_inline ? "inlined" : "" )
+                 << "Block literal in"
+                 << printLoc(b->d_loc);
+#endif
         if( blocks.isEmpty() )
         {
             if( b->d_func->d_inline )
@@ -178,12 +184,32 @@ struct LjObjectManager::ResolveIdents : public Visitor
             }else
                 b->d_func->d_inlinedLevel = blocks.back()->d_func->d_inlinedLevel + 1;
         }
+
         stack.push_back(b->d_func.data());
         blocks.push_back(b);
         for( int i = 0; i < b->d_func->d_vars.size(); i++ )
             b->d_func->d_vars[i]->accept(this);
         for( int i = 0; i < b->d_func->d_body.size(); i++ )
             b->d_func->d_body[i]->accept(this);
+
+
+        // TODO: determine where this block needs to be declared and instantiated: on location
+        // (which is likely the most inefficient way) or on method level (if it requires no or upvalues
+        // originated on method level) or somewhere in between. Blocks not depending on method local vars can
+        // even be instantiated on module level!
+#if 0
+        if( b->d_func->d_lowestUpvalueSource == 0 && !b->d_func->d_inline )
+            qDebug() << "move to module level" << printLoc(b->d_loc);
+            // TODO: not possible if it is using Class/Object vars because these require implicit self access
+        else if( !b->d_func->d_inline )
+        {
+            Function* f = b->d_func->d_lowestUpvalueSource;
+            //if( f == 0 )
+            //    f = b->d_func->d_lowestUpvalueSource->inlinedOwner();
+            qDebug() << "move" << printLoc(b->d_loc) << "to"<< (f->getTag()==Thing::T_Method ? "method" : "" )
+                     << "level" << printLoc(f->d_loc);
+        }
+#endif
         blocks.pop_back();
         stack.pop_back();
     }
@@ -208,6 +234,31 @@ struct LjObjectManager::ResolveIdents : public Visitor
             break;
         }
     }
+    void markUpvalueSource( Named* n )
+    {
+        if( n == 0 || n->d_owner == 0 )
+            return; // system, Object etc. have no owner
+        if( blocks.isEmpty() )
+            return; // only Blocks consume Upvalues
+        if( n->d_owner != blocks.back()->d_func.data() && n->d_owner->isFunc() )
+        {
+            // only local vars arrive here because only these have a func owner
+            Function* owner = static_cast<Function*>( n->d_owner );
+            owner->d_upvalSource = true;
+            if( owner->d_inline )
+            {
+                Function* inlinedOwner = owner->inlinedOwner();
+                Q_ASSERT( inlinedOwner );
+                inlinedOwner->d_upvalSource = true;
+            }
+
+            if( blocks.back()->d_func->d_lowestUpvalueSource == 0 )
+                blocks.back()->d_func->d_lowestUpvalueSource = owner;
+            else if( blocks.back()->d_func->d_lowestUpvalueSource->d_syntaxLevel < owner->d_syntaxLevel )
+                blocks.back()->d_func->d_lowestUpvalueSource = owner;
+        }
+    }
+
     void visit( Ident* i )
     {
         Q_ASSERT( !stack.isEmpty() );
@@ -227,7 +278,7 @@ struct LjObjectManager::ResolveIdents : public Visitor
                 Q_ASSERT( res.size() == 1 );
                 i->d_resolved = res.first();
                 Q_ASSERT( i->d_resolved->d_owner );
-                i->d_resolved->d_owner->markAsUpvalSource(stack.back());
+                markUpvalueSource(i->d_resolved);
             }
             // Ident::MsgReceiver will be set elsewhere
             return;
@@ -250,8 +301,7 @@ struct LjObjectManager::ResolveIdents : public Visitor
             {
                 Q_ASSERT( hit->getTag() == Thing::T_Variable );
                 i->d_resolved = hit;
-                if( i->d_resolved->d_owner ) // system, Object etc. have no owner
-                    i->d_resolved->d_owner->markAsUpvalSource(stack.back());
+                markUpvalueSource(i->d_resolved);
                 return;
             }
         }else // not inAssig or rhs
@@ -274,8 +324,7 @@ struct LjObjectManager::ResolveIdents : public Visitor
                 if( res.size() > 1 ) // TODO
                    qDebug() << "more than one result" << i->d_ident << meth->getClass()->d_name << meth->d_name;
                 i->d_resolved = res.first();
-                if( i->d_resolved->d_owner ) // system, Object etc. have no owner
-                    i->d_resolved->d_owner->markAsUpvalSource(stack.back());
+                markUpvalueSource(i->d_resolved);
                 return;
             }
         }
@@ -283,26 +332,43 @@ struct LjObjectManager::ResolveIdents : public Visitor
     }
     void visit( MsgSend* s)
     {
+        // NOTE: we don't know here to whom the message is sent; otherwhise we could trace what
+        // the receiver is doing with the block and inline everything if the block is not
+        // really used as closure (i.e. only passed to be immediately called).
         if( s->d_patternType == KeywordPattern )
         {
             const QByteArray name = Lexer::getSymbol( s->prettyName(false) );
             ToInline::const_iterator it = d_toInline.find(name.constData());
-            if( it != d_toInline.end() )
+            if( it != d_toInline.end() && it.value().second == s->d_args.size() )
             {
-                bool allInline = true;
+                bool hasBlocks = false;
                 for( int i = 0; i < s->d_args.size(); i++ )
                 {
                     if( s->d_args[i]->getTag() == Thing::T_Block )
+                    {
+                        hasBlocks = true;
+                        // qDebug() << "inlined" << printLoc(s->d_args[i]->d_loc);
                         static_cast<Block*>( s->d_args[i].data() )->d_func->d_inline = true;
-                    else
-                        allInline = false;
+                    }
                 }
-                if( s->d_receiver->getTag() == Thing::T_Block && allInline )
+                if( s->d_receiver->getTag() == Thing::T_Block )
+                {
+                    hasBlocks = true;
+                    // qDebug() << "inlined" << printLoc(s->d_receiver->d_loc);
                     static_cast<Block*>( s->d_receiver.data() )->d_func->d_inline = true;
-                if( allInline )
-                    s->d_flowControl = it.value();
+                }
+                if( hasBlocks )
+                    s->d_flowControl = it.value().first;
+            }else if( s->d_receiver->getTag() == Thing::T_Number )
+            {
+                // doesn't help much since all loops are eventually implemented by whileTrue/whileFalse
+                // which is already inlined
             }
         }
+        // not observed so far:
+        // else if( s->d_receiver->getTag() == Thing::T_Block )
+        //    qDebug() << "literal block receiver found at" << printLoc(s->d_receiver->d_loc );
+
         for( int i = 0; i < s->d_args.size(); i++ )
             s->d_args[i]->accept(this); // d_inline is already set here
         s->d_receiver->accept(this);

@@ -1239,7 +1239,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Som");
     a.setApplicationName("SOM Class Browser");
-    a.setApplicationVersion("0.3");
+    a.setApplicationVersion("0.4");
     a.setStyle("Fusion");
 
     ClassBrowser w;

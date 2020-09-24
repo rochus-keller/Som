@@ -269,6 +269,7 @@ Ast::Ref<Method> Parser::readMethod(Class* c, bool classLevel )
         }
         m->d_primitive = true;
         m->d_end = t.d_loc;
+        m->d_end.d_pos += t.d_val.size();
     }else if( t.d_type == Lexer::Lpar )
     {
         int level = 0;

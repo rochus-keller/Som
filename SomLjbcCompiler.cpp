@@ -20,6 +20,7 @@
 #include "SomLjbcCompiler.h"
 #include "SomLuaTranspiler.h"
 #include "SomLexer.h"
+#include <QFileInfo>
 #include <QtDebug>
 using namespace Som;
 using namespace Som::Ast;
@@ -266,6 +267,14 @@ struct LjBcGen: public Visitor
             s->d_receiver->accept(this);
     }
 
+    void inlineIfBlock( Expression* e )
+    {
+        if( e->getTag() == Thing::T_Block )
+            inlineBlock( static_cast<Block*>(e));
+        else
+            e->accept(this);
+    }
+
     void inlineIf( MsgSend* s )
     {
         emitReceiver(s);
@@ -288,8 +297,8 @@ struct LjBcGen: public Visitor
         bc.JMP(ctx.back().pool.d_frameSize,0,s->d_loc.packed());
         const int label = bc.getCurPc();
 
-        Q_ASSERT( !s->d_args.isEmpty() && s->d_args.first()->getTag() == Thing::T_Block );
-        inlineBlock( static_cast<Block*>(s->d_args.first().data()));
+        Q_ASSERT( !s->d_args.isEmpty() );
+        inlineIfBlock(s->d_args.first().data());
         // the result is in slotStack.back()
 
         if( s->d_flowControl == IfElse )
@@ -300,8 +309,8 @@ struct LjBcGen: public Visitor
 
             bc.patch(label);
             const int res = slotStack.back();
-            Q_ASSERT( s->d_args.size() == 2 && s->d_args.last()->getTag() == Thing::T_Block );
-            inlineBlock( static_cast<Block*>(s->d_args.last().data()));
+            Q_ASSERT( s->d_args.size() == 2 );
+            inlineIfBlock(s->d_args.last().data());
             // the result is in slotStack.back()
             bc.MOV(res,slotStack.back(),s->d_loc.packed());
             ctx.back().sellSlots(slotStack.back());
@@ -338,23 +347,43 @@ struct LjBcGen: public Visitor
         bc.JMP(ctx.back().pool.d_frameSize,0,s->d_loc.packed());
         const int label = bc.getCurPc();
 
-        Q_ASSERT( !s->d_args.isEmpty() && s->d_args.first()->getTag() == Thing::T_Block );
-        inlineBlock( static_cast<Block*>(s->d_args.first().data()));
+        Q_ASSERT( !s->d_args.isEmpty() );
+        inlineIfBlock(s->d_args.first().data());
         // the result is in slotStack.back()
         bc.MOV( res, slotStack.back(), s->d_loc.packed());
         ctx.back().sellSlots(slotStack.back());
         slotStack.pop_back();
 
-        bc.JMP(ctx.back().pool.d_frameSize, startLoop - bc.getCurPc() - 2, s->d_loc.packed()); // loop to start
-        bc.patch( startLoop, bc.getCurPc() - startLoop -1 );
+        bc.jumpToLoop( startLoop, ctx.back().pool.d_frameSize, s->d_loc.packed() ); // loop to start
 
         bc.patch( label );
 
         slotStack.push_back(res);
     }
 
+    static inline QString printLoc(const Loc& loc )
+    {
+        return QString("%1:%2:%3").arg(QFileInfo(loc.d_source).baseName()).arg(loc.d_line).arg(loc.d_col);
+    }
+
     virtual void visit( MsgSend* s )
     {
+#if 0
+        if( s->d_receiver->getTag() == Thing::T_Block )
+            qDebug() << ( s->d_flowControl ? "inlined" : "" )
+                     << "Block literal in" << s->prettyName(false) << "receiver"
+                     << printLoc(s->d_receiver->d_loc);
+        for( int i = 0; i < s->d_args.size(); i++ )
+        {
+            if( s->d_args[i]->getTag() == Thing::T_Block )
+            {
+                qDebug() << ( s->d_flowControl ? "inlined" : "" )
+                         << "Block literal in" << s->prettyName(false)
+                         << "argument"
+                         << printLoc(s->d_args[i]->d_loc);
+            }
+        }
+#endif
         switch( s->d_flowControl )
         {
         case IfTrue:
@@ -511,7 +540,7 @@ struct LjBcGen: public Visitor
     {
         ctx.push_back( Ctx(b->d_func.data(),b) );
         const int id = bc.openFunction(b->d_func->getParamCount(), // no self here, we use the self of the surrounding method
-                        "Block", b->d_loc.packed(), b->d_func->d_end.packed() );
+                        b->d_loc.d_source.toUtf8(), b->d_func->d_loc.packed(), b->d_func->d_end.packed() );
         Q_ASSERT( id >= 0 );
 
         // ctx.back().buySlots( b->d_func->d_vars.size() );
