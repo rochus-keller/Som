@@ -123,6 +123,7 @@ struct LjObjectManager::ResolveIdents : public Visitor
             m->d_methods[i]->accept(this);
         stack.pop_back();
     }
+
     void visit( Variable* v )
     {
        if( meth )
@@ -135,6 +136,7 @@ struct LjObjectManager::ResolveIdents : public Visitor
        if( v->d_inlinedOwner == 0 && v->d_owner->isFunc() )
            v->d_inlinedOwner = static_cast<Function*>(v->d_owner);
     }
+
     void visit( Method* m)
     {
         meth = m;
@@ -160,6 +162,7 @@ struct LjObjectManager::ResolveIdents : public Visitor
     {
         return QString("%1:%2:%3").arg(QFileInfo(loc.d_source).baseName()).arg(loc.d_line).arg(loc.d_col);
     }
+
     void visit( Block* b)
     {
 #if 0
@@ -192,27 +195,54 @@ struct LjObjectManager::ResolveIdents : public Visitor
         for( int i = 0; i < b->d_func->d_body.size(); i++ )
             b->d_func->d_body[i]->accept(this);
 
-
-        // TODO: determine where this block needs to be declared and instantiated: on location
+#if 0
+        // determine where this block needs to be declared and instantiated: on location
         // (which is likely the most inefficient way) or on method level (if it requires no or upvalues
         // originated on method level) or somewhere in between. Blocks not depending on method local vars can
-        // even be instantiated on module level!
-#if 0
-        if( b->d_func->d_lowestUpvalueSource == 0 && !b->d_func->d_inline )
-            qDebug() << "move to module level" << printLoc(b->d_loc);
-            // TODO: not possible if it is using Class/Object vars because these require implicit self access
-        else if( !b->d_func->d_inline )
+        // even be instantiated on module level.
+        // checked with Benchmarks, of the 69 non-inlined only 14 can be relocated, only one of which affects an inner
+        // loop; all others must remain in the methods where they are; so we cannot further get around the NYI list!!!
+        if( b->d_func->d_lowestUpvalueSource == 0 )
         {
-            Function* f = b->d_func->d_lowestUpvalueSource;
-            //if( f == 0 )
-            //    f = b->d_func->d_lowestUpvalueSource->inlinedOwner();
-            qDebug() << "move" << printLoc(b->d_loc) << "to"<< (f->getTag()==Thing::T_Method ? "method" : "" )
-                     << "level" << printLoc(f->d_loc);
+            int level = 0;
+            for( int i = 0; i < b->d_func->d_subfunctions.size(); i++ )
+            {
+                if( b->d_func->d_subfunctions[i]->d_lowestUpvalueSource != 0 &&
+                        b->d_func->d_subfunctions[i]->d_lowestUpvalueSource->d_syntaxLevel > level )
+                {
+                    level = b->d_func->d_subfunctions[i]->d_lowestUpvalueSource->d_syntaxLevel;
+                    b->d_func->d_lowestUpvalueSource = b->d_func->d_subfunctions[i]->d_lowestUpvalueSource;
+                }
+            }
         }
+        if( !b->d_func->d_inline )
+        {
+            if( b->d_func->d_lowestUpvalueSource != 0 )
+            {
+                if( b->d_func->d_owner != b->d_func->d_lowestUpvalueSource )
+                {
+                    b->d_func->d_lowestUpvalueSource->d_relocated.append( b->d_func.data() );
+                    qDebug() << "moved" << printLoc(b->d_loc)
+                             << "to"<< (b->d_func->d_lowestUpvalueSource->getTag()==Thing::T_Method ? "method" : "" )
+                             << "level" << printLoc(b->d_func->d_lowestUpvalueSource->d_loc);
+                }else
+                    qDebug() << "left" << printLoc(b->d_loc) << "as is";
+            }else
+            {
+                Q_ASSERT( meth->d_owner->getTag() == Thing::T_Class );
+                // mdl->d_mainClass is not always set here!
+                static_cast<Class*>(meth->d_owner)->d_relocated.append( b->d_func.data() );
+                qDebug() << "moved" << printLoc(b->d_loc) << "to module level";
+            }
+        }else
+            qDebug() << "inlined" << printLoc(b->d_loc);
 #endif
+
+
         blocks.pop_back();
         stack.pop_back();
     }
+
     void visit( Assig* a )
     {
         inAssig = true;
@@ -234,28 +264,35 @@ struct LjObjectManager::ResolveIdents : public Visitor
             break;
         }
     }
+
     void markUpvalueSource( Named* n )
     {
         if( n == 0 || n->d_owner == 0 )
             return; // system, Object etc. have no owner
         if( blocks.isEmpty() )
             return; // only Blocks consume Upvalues
-        if( n->d_owner != blocks.back()->d_func.data() && n->d_owner->isFunc() )
+        if( n->d_owner != blocks.back()->d_func.data() )
         {
-            // only local vars arrive here because only these have a func owner
-            Function* owner = static_cast<Function*>( n->d_owner );
-            owner->d_upvalSource = true;
-            if( owner->d_inline )
+            if( n->d_owner->isFunc() )
             {
-                Function* inlinedOwner = owner->inlinedOwner();
-                Q_ASSERT( inlinedOwner );
-                inlinedOwner->d_upvalSource = true;
-            }
+                // only local vars arrive here because only these have a func owner
+                Function* owner = static_cast<Function*>( n->d_owner );
+                owner->d_upvalSource = true;
+                if( owner->d_inline )
+                {
+                    Function* inlinedOwner = owner->inlinedOwner();
+                    Q_ASSERT( inlinedOwner );
+                    inlinedOwner->d_upvalSource = true;
+                }
 
-            if( blocks.back()->d_func->d_lowestUpvalueSource == 0 )
-                blocks.back()->d_func->d_lowestUpvalueSource = owner;
-            else if( blocks.back()->d_func->d_lowestUpvalueSource->d_syntaxLevel < owner->d_syntaxLevel )
-                blocks.back()->d_func->d_lowestUpvalueSource = owner;
+                if( blocks.back()->d_func->d_lowestUpvalueSource == 0 ||
+                        blocks.back()->d_func->d_lowestUpvalueSource->d_syntaxLevel < owner->d_syntaxLevel )
+                    blocks.back()->d_func->d_lowestUpvalueSource = owner;
+            }else if( blocks.back()->d_func->d_lowestUpvalueSource == 0 )
+            {
+                // only class and instance level members arrive here because system has no owner
+                blocks.back()->d_func->d_lowestUpvalueSource = meth; // to access object members self is required
+            }
         }
     }
 

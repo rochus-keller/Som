@@ -222,10 +222,12 @@ namespace Ast
     {
         QList< Ref<Variable> > d_vars;
         ExpList d_body;
-        quint8 d_syntaxLevel, d_inlinedLevel; // 0 is method
-        bool d_inline;
-        bool d_upvalSource;
+        quint32 d_syntaxLevel : 8;
+        quint32 d_inlinedLevel : 8; // 0 is method level
+        quint32 d_inline : 1;
+        quint32 d_upvalSource : 1;
         Function* d_lowestUpvalueSource;
+        QList<Function*> d_subfunctions, d_relocated;
         Function():d_upvalSource(false),d_syntaxLevel(0),d_inlinedLevel(0),d_inline(0),d_lowestUpvalueSource(0){}
         Variable* findVar( const QByteArray& ) const;
         int getTag() const { return T_Func; }
@@ -288,6 +290,7 @@ namespace Ast
         QList< Ref<Variable> > d_instVars, d_classVars;
         QList< Ref<Method> > d_methods;
         QList< Ref<Class> > d_subs;
+        QList<Function*> d_relocated;
 
         Method* findMethod(const QByteArray& ) const;
         Variable* findVar( const QByteArray& ) const;

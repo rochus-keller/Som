@@ -561,6 +561,8 @@ Ast::Ref<Expression> Parser::parseBlock(Ast::Function* outer,Parser::TokStream& 
     Ref<Block> b = new Block();
     b->d_loc = t.d_loc;
     b->d_func->d_owner = outer;
+    outer->d_subfunctions.append(b->d_func.data());
+    b->d_func->d_loc = t.d_loc;
     b->d_func->d_syntaxLevel = d_blockLevel;
     parseBlockBody( b->d_func.data(), ts );
     d_blockLevel--;
