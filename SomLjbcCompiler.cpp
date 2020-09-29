@@ -539,10 +539,11 @@ struct LjBcGen: public Visitor
     virtual void visit( Block* b )
     {
         ctx.push_back( Ctx(b->d_func.data(),b) );
-        const int id = bc.openFunction(b->d_func->getParamCount(), // no self here, we use the self of the surrounding method
+        const int id = bc.openFunction(b->d_func->getParamCount() + 1,
                         b->d_loc.d_source.toUtf8(), b->d_func->d_loc.packed(), b->d_func->d_end.packed() );
         Q_ASSERT( id >= 0 );
 
+        ctx.back().buySlots( 1 ); // because of self
         // ctx.back().buySlots( b->d_func->d_vars.size() );
         for( int i = 0; i < b->d_func->d_vars.size(); i++ )
         {

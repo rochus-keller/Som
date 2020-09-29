@@ -243,7 +243,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("http://github.com/rochus-keller/Som");
     a.setApplicationName("LjSOM");
-    a.setApplicationVersion("0.7.3");
+    a.setApplicationVersion("0.7.4");
 
     QTextStream out(stdout);
 

@@ -199,12 +199,12 @@ struct LuaTranspilerVisitor : public Ast::Visitor
         // under the global var className we find the metaclass
         out << "_block( function(";
         int i = 0;
+        out << "_self"; // not used
         while( i < b->d_func->d_vars.size() )
         {
             if( b->d_func->d_vars[i]->d_kind != Ast::Variable::Argument )
                 break;
-            if( i != 0 )
-                out << ",";
+            out << ",";
             out << prefix(b->d_func->d_vars[i]->d_name);
             i++;
         }

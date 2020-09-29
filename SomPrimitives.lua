@@ -602,25 +602,25 @@ module.Block = {}
 module.Block1 = {}
 
 function module.Block.value(self)
-	return self._f() -- no ':' here!
+	return self:_f() -- self here is the Block object, not the enclosing object
 	-- we want to access to the self of the enclosing method
 end 
 
 module.Block1.value = module.Block.value
 
 function module.Block.value_(self,argument)
-	return self._f(argument) -- intentionally no self!
+	return self:_f(argument) 
 end
 module.Block["value:"] = module.Block.value_
 
 function module.Block.value_with_(self,arg1,arg2)
-	return self._f(arg1,arg2) -- intentionally no self!
+	return self:_f(arg1,arg2) 
 end
 module.Block["value:with:"] = module.Block.value_with_
 
 function module.Block.whileTrue_(self,block)
-	while self:value() do
-		local res, stat = block:value()
+	while self:_f() do
+		local res, stat = block:_f()
 		if stat then
 			return res, stat
 		end
