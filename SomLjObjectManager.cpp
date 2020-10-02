@@ -22,6 +22,7 @@
 #include "SomLexer.h"
 #include "SomLuaTranspiler.h"
 #include "SomLjbcCompiler.h"
+#include "SomLjbcCompiler2.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QtDebug>
@@ -134,16 +135,21 @@ struct LjObjectManager::ResolveIdents : public Visitor
            meth->d_helper << id.data();
        }
        if( v->d_inlinedOwner == 0 && v->d_owner->isFunc() )
-           v->d_inlinedOwner = static_cast<Function*>(v->d_owner);
+           v->d_inlinedOwner = static_cast<Function*>(v->d_owner); // assure d_inlinedOwner always points to something
     }
 
     void visit( Method* m)
     {
         meth = m;
         stack.push_back(m);
-        m->d_self->d_inlinedOwner = m;
+        m->d_self->d_inlinedOwner = m; // assure d_inlinedOwner always points to something
         for( int i = 0; i < m->d_vars.size(); i++ )
+        {
             m->d_vars[i]->accept(this);
+            m->d_vars[i]->d_slot = i+1;
+            // preset slot values because they are needed in LjbcCompiler2 by Block before visit(Method*) is
+            // called; index 0 is self, followed by params and locals
+        }
         for( int i = 0; i < m->d_body.size(); i++ )
             m->d_body[i]->accept(this);
         stack.pop_back();
@@ -155,7 +161,10 @@ struct LjObjectManager::ResolveIdents : public Visitor
         Q_ASSERT( b->d_func->d_inline && b->d_func->d_owner->isFunc() );
         Function* owner = b->d_func->inlinedOwner();
         for( int i = 0; i < b->d_func->d_vars.size(); i++ )
+        {
             b->d_func->d_vars[i]->d_inlinedOwner = owner;
+            owner->d_inlineds.append(b->d_func->d_vars[i].data());
+        }
     }
 
     static inline QString printLoc(const Loc& loc )
@@ -191,7 +200,12 @@ struct LjObjectManager::ResolveIdents : public Visitor
         stack.push_back(b->d_func.data());
         blocks.push_back(b);
         for( int i = 0; i < b->d_func->d_vars.size(); i++ )
+        {
             b->d_func->d_vars[i]->accept(this);
+            b->d_func->d_vars[i]->d_slot = i+1;
+            // preset slot values because they might be needed in LjbcCompiler2;
+            // slot 0 is not used but here to avoid irregularities
+        }
         for( int i = 0; i < b->d_func->d_body.size(); i++ )
             b->d_func->d_body[i]->accept(this);
 
@@ -205,13 +219,13 @@ struct LjObjectManager::ResolveIdents : public Visitor
         if( b->d_func->d_lowestUpvalueSource == 0 )
         {
             int level = 0;
-            for( int i = 0; i < b->d_func->d_subfunctions.size(); i++ )
+            for( int i = 0; i < b->d_func->d_blocks.size(); i++ )
             {
-                if( b->d_func->d_subfunctions[i]->d_lowestUpvalueSource != 0 &&
-                        b->d_func->d_subfunctions[i]->d_lowestUpvalueSource->d_syntaxLevel > level )
+                if( b->d_func->d_blocks[i]->d_func->d_lowestUpvalueSource != 0 &&
+                        b->d_func->d_blocks[i]->d_func->d_lowestUpvalueSource->d_syntaxLevel > level )
                 {
-                    level = b->d_func->d_subfunctions[i]->d_lowestUpvalueSource->d_syntaxLevel;
-                    b->d_func->d_lowestUpvalueSource = b->d_func->d_subfunctions[i]->d_lowestUpvalueSource;
+                    level = b->d_func->d_blocks[i]->d_func->d_lowestUpvalueSource->d_syntaxLevel;
+                    b->d_func->d_lowestUpvalueSource = b->d_func->d_blocks[i]->d_func->d_lowestUpvalueSource;
                 }
             }
         }
@@ -444,7 +458,8 @@ static int loadClassByName(lua_State * L)
     return 1;
 }
 
-LjObjectManager::LjObjectManager(Lua::Engine2* lua, QObject *parent) : QObject(parent),d_lua(lua),d_genLua(false)
+LjObjectManager::LjObjectManager(Lua::Engine2* lua, QObject *parent) : QObject(parent),d_lua(lua),
+    d_genLua(false),d_genClosures(false)
 {
     Q_ASSERT( d_lua );
     _nil = Lexer::getSymbol("nil"); // instance of Nil
@@ -1142,6 +1157,41 @@ void LjObjectManager::writeLua(QIODevice* out, Class* cls)
     ts.flush();
 }
 
+static quint8 nextFreeSlot( Lua::JitComposer::SlotPool& pool, const Loc& loc )
+{
+    const int slot = Lua::JitComposer::nextFreeSlot(pool,1);
+    if( slot < 0 )
+    {
+        qCritical() << loc.d_source << ":" << loc.d_line << ":" << loc.d_col << ":" << "run out of block function slots";
+        throw NoMoreFreeSlots(loc);
+        return false;
+    }
+    return slot;
+}
+
+static bool writeBlock( Lua::JitComposer& bc, Method* m, Block* b, Lua::JitComposer::SlotPool& pool )
+{
+    if( !b->d_func->d_inline )
+    {
+        b->d_func->d_slot = nextFreeSlot(pool,b->d_loc);
+        LjbcCompiler2::translate(bc, m, b);
+#if 0
+        const int c = nextFreeSlot(pool,b->d_loc);
+        bc.GGET( c, m->d_owner->d_name, b->d_loc.packed() );
+        if( !m->d_classLevel )
+            bc.TGET( c, c, "_class", m->d_end.packed() );
+        bc.TSET( b->d_func->d_slot, c,  "_" + QByteArray::number(b->d_func->d_slot), b->d_loc.packed() );
+        bc.releaseSlot(pool,c);
+#endif
+    }
+    for( int j = 0; j < b->d_func->d_blocks.size(); j++ )
+    {
+        if( !writeBlock( bc, m, b->d_func->d_blocks[j], pool ) )
+            return false;
+    }
+    return true;
+}
+
 void LjObjectManager::writeBc(QIODevice* out, Class* cls)
 {
     Lua::JitComposer bc;
@@ -1163,8 +1213,26 @@ void LjObjectManager::writeBc(QIODevice* out, Class* cls)
         Ast::Method* m = cls->d_methods[i].data();
         if( !m->d_primitive )
         {
-            // compile the method and attach it to the class
-            LjbcCompiler::translate(bc, m);
+            if( !d_genClosures )
+            {
+                for( int j = 0; j < m->d_blocks.size(); j++ )
+                {
+                    if( !writeBlock( bc, m, m->d_blocks[j], pool ) )
+                        break;
+                }
+                m->d_slot = nextFreeSlot(pool,m->d_end);
+                LjbcCompiler2::translate(bc, m);
+                // add the function to the metaclass or class table
+                const int c = nextFreeSlot(pool,m->d_end);
+                bc.GGET( c, m->d_owner->d_name, m->d_end.packed() );
+                if( !m->d_classLevel )
+                    bc.TGET( c, c, "_class", m->d_end.packed() );
+                bc.TSET( m->d_slot, c,  LuaTranspiler::map(m->d_name,m->d_patternType), m->d_end.packed() );
+                bc.releaseSlot(pool,c);
+                // TEST: leaf it as is: bc.releaseSlot(pool,m->d_slot);
+            }else
+                // compile the method and attach it to the class
+                LjbcCompiler::translate(bc, m);
         }
     }
 
@@ -1175,6 +1243,9 @@ void LjObjectManager::writeBc(QIODevice* out, Class* cls)
     bc.CALL(slot,0,1,cls->d_loc.packed());
     bc.releaseSlot(pool,slot,2);
 #endif
+
+    if( !d_genClosures )
+        bc.UCLO(0,0, cls->d_end.packed() );
 
     bc.RET(cls->d_loc.packed());
     bc.closeFunction(pool.d_frameSize);

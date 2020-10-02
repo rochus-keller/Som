@@ -42,6 +42,7 @@ namespace Som
         QStringList getLuaFiles() const;
         QByteArrayList getClassNames() const;
         void setGenLua( bool );
+        void setGenClosures( bool );
         LjObjectManager* getOm() const { return d_om;}
     protected slots:
         void onNotify( int messageType, QByteArray val1, int val2 );

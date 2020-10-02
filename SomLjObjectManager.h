@@ -47,6 +47,7 @@ namespace Som
         void generateSomPrimitives();
         QByteArrayList getClassNames() const;
         void setGenLua( bool on ) { d_genLua = on; }
+        void setGenClosures( bool on ) { d_genClosures = on; }
         QString pathInDir( const QString& dir, const QString& name );
     protected:
         bool parseMain(const QString& mainFile);
@@ -80,7 +81,7 @@ namespace Som
         Ast::Ref<Ast::Variable> d_system;
         QList<Ast::Ident*> d_unresolved;
         GeneratedFiles d_generated;
-        bool d_genLua;
+        bool d_genLua, d_genClosures;
     };
 }
 

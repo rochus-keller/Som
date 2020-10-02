@@ -221,14 +221,18 @@ namespace Ast
     struct Function : public Scope
     {
         QList< Ref<Variable> > d_vars;
+        QList<Variable*> d_inlineds;
         ExpList d_body;
         quint32 d_syntaxLevel : 8;
         quint32 d_inlinedLevel : 8; // 0 is method level
         quint32 d_inline : 1;
         quint32 d_upvalSource : 1;
+        quint32 d_slot : 8; // for blocks in the no-closure version
         Function* d_lowestUpvalueSource;
-        QList<Function*> d_subfunctions, d_relocated;
-        Function():d_upvalSource(false),d_syntaxLevel(0),d_inlinedLevel(0),d_inline(0),d_lowestUpvalueSource(0){}
+        QList<Block*> d_blocks;
+        QList<Function*> d_relocated;
+        Function():d_upvalSource(false),d_syntaxLevel(0),d_inlinedLevel(0),d_inline(0),
+            d_lowestUpvalueSource(0),d_slot(0){}
         Variable* findVar( const QByteArray& ) const;
         int getTag() const { return T_Func; }
         void addVar(Variable*);

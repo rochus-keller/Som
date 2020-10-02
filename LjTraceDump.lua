@@ -1,1 +1,1 @@
-/home/me/Entwicklung/Modules/LjTools/LjTraceDump.lua
+../LjTools/LjTraceDump.lua

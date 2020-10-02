@@ -1,5 +1,5 @@
-#ifndef SOMLjSOM_H
-#define SOMLjSOM_H
+#ifndef SOMLJBCCOMPILER2_H
+#define SOMLJBCCOMPILER2_H
 
 /*
 * Copyright 2020 Rochus Keller <mailto:me@rochus-keller.ch>
@@ -20,37 +20,21 @@
 * http://www.gnu.org/copyleft/gpl.html.
 */
 
-#include <QObject>
-#include <QStringList>
-
-namespace Lua
-{
-    class Engine2;
-}
+#include <Som/SomAst.h>
+#include <LjTools/LuaJitComposer.h>
 
 namespace Som
 {
-    class LjObjectManager;
 
-    class LjSOM : public QObject
+    class LjbcCompiler2
     {
-        Q_OBJECT
     public:
-        explicit LjSOM(QObject *parent = 0);
-        bool load(const QString& file, const QString& paths = QString() );
-        bool run(bool useJit = true, bool trace = false, const QStringList& extraArgs = QStringList());
-        Lua::Engine2* getLua() const { return d_lua; }
-        QStringList getLuaFiles() const;
-        QByteArrayList getClassNames() const;
-        void setGenLua( bool );
-        void setGenClosures( bool );
-        LjObjectManager* getOm() const { return d_om;}
-    protected slots:
-        void onNotify( int messageType, QByteArray val1, int val2 );
+        static bool translate( Lua::JitComposer&, Ast::Method* );
+        static bool translate( Lua::JitComposer&, Ast::Method*, Ast::Block* );
+
     private:
-        Lua::Engine2* d_lua;
-        LjObjectManager* d_om;
+        LjbcCompiler2();
     };
 }
 
-#endif // SOMLjSOM_H
+#endif // SOMLJBCCOMPILER2_H

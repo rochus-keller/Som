@@ -38,7 +38,8 @@ SOURCES += \
     ../LjTools/LuaJitBytecode.cpp \
     ../LjTools/Engine2.cpp \
     ../LjTools/LuaJitComposer.cpp \
-    LjSOM.cpp
+    LjSOM.cpp \
+    SomLjbcCompiler2.cpp
 
 
 HEADERS  += \ 
@@ -51,7 +52,8 @@ HEADERS  += \
     ../LjTools/LuaJitBytecode.h \
     ../LjTools/Engine2.h \
     ../LjTools/LuaJitComposer.h \
-    LjSOM.h
+    LjSOM.h \
+    SomLjbcCompiler2.h
 
 
 win32 {

@@ -292,6 +292,11 @@ void LjVirtualMachine::setGenLua(bool on)
     d_om->setGenLua(on);
 }
 
+void LjVirtualMachine::setGenClosures(bool on)
+{
+    d_om->setGenClosures(on);
+}
+
 void LjVirtualMachine::onNotify(int messageType, QByteArray val1, int val2)
 {
     switch(messageType)
@@ -324,7 +329,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Som");
     a.setApplicationName("SOM on LuaJIT");
-    a.setApplicationVersion("0.7.2");
+    a.setApplicationVersion("0.7.3");
     a.setStyle("Fusion");
 
     QString somFile;
@@ -332,6 +337,7 @@ int main(int argc, char *argv[])
     QString proFile;
     bool ide = false;
     bool lua = false;
+    bool clo = false;
     bool useProfiler = false;
     bool interactive = false;
     bool debugger = false;
@@ -351,10 +357,11 @@ int main(int argc, char *argv[])
             out << "            Note that path of som_file is automatically added and" << endl;
             out << "            the Smalltalk files are integrated in the executable" << endl;
             out << "  -ide      start Lua IDE (overrides -lua)" << endl;
+            out << "  -pro file open given project in LuaIDE" << endl;
             out << "  -lua      generate Lua source code instead of bytecode" << endl;
             out << "  -i        run script and start an interactive session" << endl;
             out << "  -dbg      run script in the debugger (overrides -i)" << endl;
-            out << "  -pro file open given project in LuaIDE" << endl;
+            out << "  -clo      generate bytecode with blocks as closures (using FNEW/UCLO)" << endl;
             out << "  -nojit    switch off JIT" << endl;
             out << "  -stats    use LuaJIT profiler (if present)" << endl;
             out << "  -h        display this information" << endl;
@@ -369,6 +376,8 @@ int main(int argc, char *argv[])
                     interactive = true;
         else if( args[i] == "-dbg" )
                     debugger = true;
+        else if( args[i] == "-clo" )
+                    clo = true;
         else if( args[i] == "-nojit" )
                     useJit = false;
         else if( args[i] == "-stats" )
@@ -419,6 +428,7 @@ int main(int argc, char *argv[])
             return 0;
     }
     vm.setGenLua(lua);
+    vm.setGenClosures(clo);
     if( !vm.load(somFile, somPaths) )
         return -1;
 

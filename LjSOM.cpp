@@ -211,6 +211,11 @@ void LjSOM::setGenLua(bool on)
     d_om->setGenLua(on);
 }
 
+void LjSOM::setGenClosures(bool on)
+{
+    d_om->setGenClosures(on);
+}
+
 void LjSOM::onNotify(int messageType, QByteArray val1, int val2)
 {
     switch(messageType)
@@ -253,6 +258,7 @@ int main(int argc, char *argv[])
     QString somFile;
     QString somPaths;
     bool lua = false;
+    bool clo = false;
     bool useJit = true;
     bool trace = false;
     QStringList extraArgs;
@@ -267,6 +273,7 @@ int main(int argc, char *argv[])
             out << "            Note that path of som_file is automatically added and" << endl;
             out << "            the Smalltalk files are integrated in the executable" << endl;
             out << "  -lua      generate Lua source code instead of bytecode" << endl;
+            out << "  -clo      generate bytecode with blocks as closures (using FNEW/UCLO)" << endl;
             out << "  -nojit    switch off JIT" << endl;
             out << "  -trace    output tracer results" << endl;
             out << "  -h        display this information" << endl;
@@ -275,6 +282,8 @@ int main(int argc, char *argv[])
                     lua = true;
         else if( args[i] == "-nojit" )
                     useJit = false;
+        else if( args[i] == "-clo" )
+                    clo = false;
         else if( args[i] == "-trace" )
                     trace = true;
         else if( args[i] == "-cp" )
@@ -309,6 +318,7 @@ int main(int argc, char *argv[])
         return -1;
     }
     vm.setGenLua(lua);
+    vm.setGenClosures(clo);
     if( !vm.load(somFile, somPaths) )
         return -1;
 

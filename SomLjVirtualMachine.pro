@@ -36,7 +36,8 @@ SOURCES += \
     SomLuaTranspiler.cpp \
     SomLjLibFfi.cpp \
     SomLjbcCompiler.cpp \
-    ../LjTools/LjBcDebugger.cpp
+    ../LjTools/LjBcDebugger.cpp \
+    SomLjbcCompiler2.cpp
 
 HEADERS  += \ 
     SomLjVirtualMachine.h \
@@ -46,7 +47,8 @@ HEADERS  += \
     SomParser.h \
     SomLuaTranspiler.h \
     SomLjbcCompiler.h \
-    ../LjTools/LjBcDebugger.h
+    ../LjTools/LjBcDebugger.h \
+    SomLjbcCompiler2.h
 
 DEFINES += LUAIDE_EMBEDDED
 include( ../LjTools/LuaIde.pri )

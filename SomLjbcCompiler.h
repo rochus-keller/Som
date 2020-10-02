@@ -22,9 +22,19 @@
 
 #include <Som/SomAst.h>
 #include <LjTools/LuaJitComposer.h>
+#include <exception>
 
 namespace Som
 {
+    class NoMoreFreeSlots : public std::exception
+    {
+    public:
+        NoMoreFreeSlots( const Ast::Loc& );
+        ~NoMoreFreeSlots() throw() {}
+        const char* what() const throw() { return d_what.constData(); }
+    private:
+        QByteArray d_what;
+    };
 
     class LjbcCompiler
     {
