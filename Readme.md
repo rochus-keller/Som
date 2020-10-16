@@ -78,6 +78,7 @@ LjVM bytecode nojit | 835 | 1.8
 LjVM bc if inlined | 485 | 1.0 
 LjVM bc if & while inlined | 468 | 1.0 
 LjVM bc if & while inl. nojit | 494 | 1.1 
+LjVM bc 0.8.0 | 146 | 0.3
 
 The VM includes my bytecode debugger (see https://github.com/rochus-keller/LjTools/#luajit-bytecode-debugger); it can be enabled by the -dbg command line option; you can set breakpoints and step through the Lua code, watching the stack trace and the local variable values.
 
@@ -104,7 +105,7 @@ Concerning the present LuaJIT performance it has to be noted that with the curre
 
 I instrumented the code to find out whether I could take out FNEW from loops and move it to superordinate functions (method or module level). The results of this analysis are in [LjSOM_0.7.3_Benchmarks_All_FNEW_optimization_analysis.ods](http://software.rochus-keller.info/LjSOM_0.7.3_Benchmarks_All_FNEW_optimization_analysis.ods). The Benchmarks code includes 198 Block literals of which 129 can be inlined; only 14 can be relocated to a higher level; in only 3 of these FNEW is called in a loop, and only one seems to be performance relevant; from that I concluded that modifying the bytecode generator is not worth the effort.
 
-So now I have reached the limits of the current versions of LuaJIT with closures. I thus implemented yet another bytecode generator which replaces closures by normal functions with concatenated tables which represent arguments and locals; the generator is still work in progress, but the benchmarks which already work show a speed-up of about factor four compared to the previous version (which is about what is to be expected according to http://luajit.org/performance_x86.html).
+So now I have reached the limits of the current versions of LuaJIT with closures. I thus implemented yet another bytecode generator which replaces closures by normal functions with concatenated tables which represent arguments and locals; the generator is still work in progress, but the benchmarks which already work show a speed-up of about factor three (geomean) compared to the previous version (which is about what is to be expected according to http://luajit.org/performance_x86.html). Examples/Benchmarks and TestSuite work as with the closure based code generator with a speed-up factor three. The are-we-fast-yet suite only partially works (Richards, Json and Havlak give errors). See updated ODS files in the Results directory.
 
 
 ### Binary versions

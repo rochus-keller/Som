@@ -22,10 +22,16 @@
 #include <QIODevice>
 #include <QtDebug>
 #include <QFile>
+#include <QFileInfo>
 using namespace Som;
 using namespace Som::Ast;
 
 // Adapted from Smalltalk StParser.cpp/h
+
+static inline QString prettyLoc( const Loc& loc )
+{
+    return QString("%1:%2:%3").arg( QFileInfo(loc.d_source).baseName() ).arg(loc.d_line).arg(loc.d_col);
+}
 
 Parser::Parser(Lexer* l):d_lex(l),d_blockLevel(0)
 {
@@ -175,6 +181,7 @@ Ast::Ref<Method> Parser::readMethod(Class* c, bool classLevel )
     Ref<Method> m = new Method();
     m->d_loc = t.d_loc;
 
+    // qDebug() << "method" << prettyLoc(t.d_loc) << m->d_name;
     QList<Lexer::Token> toks;
     toks << t;
     t = d_lex->next();
@@ -300,6 +307,7 @@ Ast::Ref<Method> Parser::readMethod(Class* c, bool classLevel )
     d_curMeth = m;
     parseMethodBody( ts );
 
+    // qDebug() << "end" << m->d_name;
     return m;
 }
 
@@ -564,6 +572,7 @@ Ast::Ref<Expression> Parser::parseBlock(Ast::Function* outer,Parser::TokStream& 
     outer->d_blocks.append(b.data());
     b->d_func->d_loc = t.d_loc;
     b->d_func->d_syntaxLevel = d_blockLevel;
+    // qDebug() << "block" << prettyLoc(t.d_loc);
     parseBlockBody( b->d_func.data(), ts );
     d_blockLevel--;
     return b.data();

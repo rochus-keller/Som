@@ -1171,9 +1171,16 @@ static quint8 nextFreeSlot( Lua::JitComposer::SlotPool& pool, const Loc& loc )
 
 static bool writeBlock( Lua::JitComposer& bc, Method* m, Block* b, Lua::JitComposer::SlotPool& pool )
 {
+    // compile from inner to outer because outer refer to inner!
+    for( int j = 0; j < b->d_func->d_blocks.size(); j++ )
+    {
+        if( !writeBlock( bc, m, b->d_func->d_blocks[j], pool ) )
+            return false;
+    }
     if( !b->d_func->d_inline )
     {
         b->d_func->d_slot = nextFreeSlot(pool,b->d_loc);
+        b->d_func->d_slotValid = true;
         LjbcCompiler2::translate(bc, m, b);
 #if 0
         const int c = nextFreeSlot(pool,b->d_loc);
@@ -1183,11 +1190,6 @@ static bool writeBlock( Lua::JitComposer& bc, Method* m, Block* b, Lua::JitCompo
         bc.TSET( b->d_func->d_slot, c,  "_" + QByteArray::number(b->d_func->d_slot), b->d_loc.packed() );
         bc.releaseSlot(pool,c);
 #endif
-    }
-    for( int j = 0; j < b->d_func->d_blocks.size(); j++ )
-    {
-        if( !writeBlock( bc, m, b->d_func->d_blocks[j], pool ) )
-            return false;
     }
     return true;
 }
@@ -1221,6 +1223,7 @@ void LjObjectManager::writeBc(QIODevice* out, Class* cls)
                         break;
                 }
                 m->d_slot = nextFreeSlot(pool,m->d_end);
+                m->d_slotValid = true;
                 LjbcCompiler2::translate(bc, m);
                 // add the function to the metaclass or class table
                 const int c = nextFreeSlot(pool,m->d_end);

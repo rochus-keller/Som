@@ -228,11 +228,12 @@ namespace Ast
         quint32 d_inline : 1;
         quint32 d_upvalSource : 1;
         quint32 d_slot : 8; // for blocks in the no-closure version
+        quint32 d_slotValid : 1;
         Function* d_lowestUpvalueSource;
         QList<Block*> d_blocks;
         QList<Function*> d_relocated;
         Function():d_upvalSource(false),d_syntaxLevel(0),d_inlinedLevel(0),d_inline(0),
-            d_lowestUpvalueSource(0),d_slot(0){}
+            d_lowestUpvalueSource(0),d_slot(0),d_slotValid(0){}
         Variable* findVar( const QByteArray& ) const;
         int getTag() const { return T_Func; }
         void addVar(Variable*);

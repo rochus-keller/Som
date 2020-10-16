@@ -35,18 +35,23 @@ struct LjBcGen2: public Visitor
 {
     Lua::JitComposer& bc;
 
-    LjBcGen2(Lua::JitComposer& _bc, Method* m):bc(_bc),meth(m){}
+    LjBcGen2(Lua::JitComposer& _bc, Method* m, Block* b):bc(_bc),meth(m), block(b), ctx(m,b) {}
 
     struct NoMoreFreeSlots {};
 
     struct Ctx
     {
         Function* fun;
-        Block* block;
         Lua::JitComposer::SlotPool pool;
         typedef QHash<Function*,quint16> Upvals;
         Upvals upvals;
-        Ctx(Function* f = 0, Block* b = 0):fun(f),block(b) { }
+        Ctx(Method* m, Block* b)
+        {
+            if( b )
+                fun = b->d_func.data();
+            else
+                fun = m;
+        }
 
         int buySlots(int len = 1, bool call = false )
         {
@@ -62,6 +67,7 @@ struct LjBcGen2: public Visitor
         }
         quint16 getUpvalNr(Function* f)
         {
+            Q_ASSERT( f->d_slotValid );
             Upvals::const_iterator i = upvals.find(f);
             if( i != upvals.end() )
                 return i.value();
@@ -70,10 +76,10 @@ struct LjBcGen2: public Visitor
             return nr;
         }
     };
-    QList<Ctx> ctx;
+    Ctx ctx;
     QList<quint8> slotStack;
-    QList<Block*> blocks;
     Method* meth;
+    Block* block;
 
     bool inline error( const Loc& l, const QString& msg )
     {
@@ -94,10 +100,9 @@ struct LjBcGen2: public Visitor
 
     Lua::JitComposer::UpvalList getUpvals()
     {
-        Q_ASSERT( !ctx.isEmpty() );
-        Lua::JitComposer::UpvalList uvl(ctx.back().upvals.size());
+        Lua::JitComposer::UpvalList uvl(ctx.upvals.size());
         Ctx::Upvals::const_iterator i;
-        for( i = ctx.back().upvals.begin(); i != ctx.back().upvals.end(); ++i )
+        for( i = ctx.upvals.begin(); i != ctx.upvals.end(); ++i )
         {
             Lua::JitComposer::Upval u;
             u.d_uv = i.key()->d_slot;
@@ -109,51 +114,63 @@ struct LjBcGen2: public Visitor
         return uvl;
     }
 
+    void createParamArray( Function* f )
+    {
+        ctx.buySlots( 1 ); // self
+
+        const int params = ctx.buySlots( f->getParamCount() );
+        const int paramArray = ctx.buySlots(1);
+        bc.TNEW( paramArray, paramTableSize(f), 0, f->d_loc.packed() );
+        bc.TSETi( 0, paramArray, 0, f->d_loc.packed()); // copy self
+        for( int i = 0; i < f->getParamCount(); i++ )
+            bc.TSETi(i+1,paramArray,i+1,f->d_loc.packed()); // copy params to paramArray
+
+        bc.MOV(0,paramArray,f->d_loc.packed()); // param array is now in slot 0
+
+        ctx.sellSlots(paramArray);
+        ctx.sellSlots(params); // params are now free again to be used as temporaries
+    }
+
     virtual void visit( Method* m )
     {
-        Q_ASSERT( blocks.isEmpty() && ctx.isEmpty() ); // this is a top-level call
+        Q_ASSERT( false );
+    }
+    void emitMethod()
+    {
+        Q_ASSERT( meth != 0 && block == 0 );
+        Method* m = meth;
 
-        ctx.push_back( Ctx(m) );
         const int id = bc.openFunction(m->getParamCount() + 1, // +1 because of self which is always slot(0)
                                        m->d_name,
                         m->d_loc.packed(), m->d_end.packed() );
         Q_ASSERT( id >= 0 );
 
-        ctx.back().buySlots( 1 ); // self
-        const int params = ctx.back().buySlots( m->getParamCount() );
-        const int tmp = ctx.back().buySlots(1);
-        bc.TNEW( tmp, paramTableSize(m), 0, m->d_loc.packed() );
-        bc.TSETi( 0, tmp, 0, m->d_loc.packed()); // copy self
-        for( int i = 0; i < m->getParamCount(); i++ )
-            bc.TSETi(i+1,tmp,i+1,m->d_loc.packed()); // copy param
-
         for( int i = 0; i < m->d_vars.size(); i++ )
-            Q_ASSERT( m->d_vars[i]->d_slot == i+1 ); // preset in ObjectManager
+            Q_ASSERT( m->d_vars[i]->d_slot == i+1 ); // this was preset in ObjectManager, don't touch it here
         for( int i = 0; i < m->d_inlineds.size(); i++ )
             m->d_inlineds[i]->d_slot = i+m->d_vars.size()+1;
 
-        bc.MOV(0,tmp,m->d_loc.packed()); // param array is now in slot 0
-        ctx.back().sellSlots(tmp);
-        ctx.back().sellSlots(params); // params are now free again to be used as temporaries
+        // TODO: only do this when method is upvalue source; use slots otherwise
+        createParamArray( m );
+        // slot 0 is now the param array and the other param slots are freed
 
         for( int i = 0; i < m->d_body.size(); i++ )
         {
             m->d_body[i]->accept( this );
-            ctx.back().sellSlots(slotStack.back());
+            ctx.sellSlots(slotStack.back());
             slotStack.pop_back(); // we don't use the results
         }
 
         if( m->d_body.isEmpty() || m->d_body.last()->getTag() != Thing::T_Return )
         {
-            const int tmp = ctx.back().buySlots(1);
+            const int tmp = ctx.buySlots(1);
             bc.TGETi( tmp, 0, 0, m->d_end.packed());
             bc.RET( tmp, 1, m->d_end.packed() ); // return self
-            ctx.back().sellSlots(tmp);
+            ctx.sellSlots(tmp);
         }
 
         bc.setUpvals( getUpvals() );
-        bc.closeFunction(ctx.back().pool.d_frameSize);
-        ctx.pop_back();
+        bc.closeFunction(ctx.pool.d_frameSize);
 
         bc.FNEW( m->d_slot, id, m->d_loc.packed() );
     }
@@ -168,14 +185,14 @@ struct LjBcGen2: public Visitor
             if( i < b->d_func->d_body.size() - 1 )
             {
                 // the last expression in the block body is the one returned to the caller
-                ctx.back().sellSlots(slotStack.back());
+                ctx.sellSlots(slotStack.back());
                 slotStack.pop_back();
             }
         }
 
         if( b->d_func->d_body.isEmpty() )
         {
-            const int res = ctx.back().buySlots(1);
+            const int res = ctx.buySlots(1);
             slotStack.push_back(res);
             bc.KNIL(res,1,b->d_loc.packed()); // empty blocks return nil (TODO: check if true)
         }
@@ -185,7 +202,7 @@ struct LjBcGen2: public Visitor
     {
         if( s->d_receiver->keyword() == Expression::_super )
         {
-            const int slot = ctx.back().buySlots(1);
+            const int slot = ctx.buySlots(1);
             bc.GGET(slot, s->d_inMethod->d_owner->d_name, s->d_loc.packed() );
             if( !s->d_inMethod->d_classLevel )
                 bc.TGET(slot,slot,"_class",s->d_loc.packed());
@@ -223,9 +240,9 @@ struct LjBcGen2: public Visitor
             Q_ASSERT(false);
             break;
         }
-        ctx.back().sellSlots(slotStack.back());
+        ctx.sellSlots(slotStack.back());
         slotStack.pop_back();
-        bc.JMP(ctx.back().pool.d_frameSize,0,s->d_loc.packed());
+        bc.JMP(ctx.pool.d_frameSize,0,s->d_loc.packed());
         const int label = bc.getCurPc();
 
         Q_ASSERT( !s->d_args.isEmpty() );
@@ -235,7 +252,7 @@ struct LjBcGen2: public Visitor
         if( s->d_flowControl == IfElse )
         {
             // before emitting the else part take care that the if part jumps over it
-            bc.JMP(ctx.back().pool.d_frameSize,0,s->d_loc.packed());
+            bc.JMP(ctx.pool.d_frameSize,0,s->d_loc.packed());
             const int label2 = bc.getCurPc();
 
             bc.patch(label);
@@ -244,7 +261,7 @@ struct LjBcGen2: public Visitor
             inlineIfBlock(s->d_args.last().data());
             // the result is in slotStack.back()
             bc.MOV(res,slotStack.back(),s->d_loc.packed());
-            ctx.back().sellSlots(slotStack.back());
+            ctx.sellSlots(slotStack.back());
             slotStack.pop_back();
 
             bc.patch(label2);
@@ -255,9 +272,9 @@ struct LjBcGen2: public Visitor
 
     void inlineWhile( MsgSend* s )
     {
-        bc.LOOP( ctx.back().pool.d_frameSize, 0, s->d_loc.packed() ); // while true do
+        bc.LOOP( ctx.pool.d_frameSize, 0, s->d_loc.packed() ); // while true do
         const quint32 startLoop = bc.getCurPc();
-        const int res = ctx.back().buySlots(1);
+        const int res = ctx.buySlots(1);
 
         emitReceiver(s);
         // the result is in slotStack.back()
@@ -273,19 +290,19 @@ struct LjBcGen2: public Visitor
             Q_ASSERT(false);
             break;
         }
-        ctx.back().sellSlots(slotStack.back());
+        ctx.sellSlots(slotStack.back());
         slotStack.pop_back();
-        bc.JMP(ctx.back().pool.d_frameSize,0,s->d_loc.packed());
+        bc.JMP(ctx.pool.d_frameSize,0,s->d_loc.packed());
         const int label = bc.getCurPc();
 
         Q_ASSERT( !s->d_args.isEmpty() );
         inlineIfBlock(s->d_args.first().data());
         // the result is in slotStack.back()
         bc.MOV( res, slotStack.back(), s->d_loc.packed());
-        ctx.back().sellSlots(slotStack.back());
+        ctx.sellSlots(slotStack.back());
         slotStack.pop_back();
 
-        bc.jumpToLoop( startLoop, ctx.back().pool.d_frameSize, s->d_loc.packed() ); // loop to start
+        bc.jumpToLoop( startLoop, ctx.pool.d_frameSize, s->d_loc.packed() ); // loop to start
 
         bc.patch( label );
 
@@ -314,34 +331,34 @@ struct LjBcGen2: public Visitor
 
         emitReceiver(s,false);
         // the result is in slotStack.back()
-        const int args = ctx.back().buySlots( s->d_args.size() + 2, true );
+        const int args = ctx.buySlots( s->d_args.size() + 2, true );
         bc.TGET( args, slotStack.back(),
                  LuaTranspiler::map(s->prettyName(false),s->d_patternType), s->d_loc.packed() );
         if( s->d_receiver->keyword() == Expression::_super )
         {
             int _self = selfToSlot( s->d_loc );
             bc.MOV( args+1, _self, s->d_loc.packed() ); // use self for calls to super
-            ctx.back().sellSlots(_self);
+            ctx.sellSlots(_self);
         }else
             bc.MOV( args+1, slotStack.back(), s->d_loc.packed() );
-        ctx.back().sellSlots(slotStack.back());
+        ctx.sellSlots(slotStack.back());
         slotStack.pop_back();
         for( int i = 0; i < s->d_args.size(); i++ )
         {
             s->d_args[i]->accept(this);
             // the result is in slotStack.back()
             bc.MOV(args+2+i, slotStack.back(), s->d_loc.packed() );
-            ctx.back().sellSlots(slotStack.back());
+            ctx.sellSlots(slotStack.back());
             slotStack.pop_back();
         }
         bc.CALL(args,2,s->d_args.size() + 1, s->d_loc.packed() );
 
-        if( ctx.back().block || !s->d_inMethod->d_hasNonLocalReturnIfInlined )
+        if( block || !s->d_inMethod->d_hasNonLocalReturnIfInlined )
         {
             // if there is a second return value which is not nil we directly return from blocks
             // and methods where no local return block was defined and just pass through the second value
             bc.ISF( args+1, s->d_loc.packed() );
-            bc.JMP(ctx.back().pool.d_frameSize,1, s->d_loc.packed() );
+            bc.JMP(ctx.pool.d_frameSize,1, s->d_loc.packed() );
             const int label = bc.getCurPc();
             bc.RET(args, 2,s->d_loc.packed());
             bc.patch( label );
@@ -349,12 +366,12 @@ struct LjBcGen2: public Visitor
         {
             // here we are on method level; check whether it is the method in which the no local return was defined.
             bc.ISF( args+1, s->d_loc.packed() );
-            bc.JMP(ctx.back().pool.d_frameSize,0, s->d_loc.packed() );
+            bc.JMP(ctx.pool.d_frameSize,0, s->d_loc.packed() );
             const int label = bc.getCurPc();
-            const int tmp = ctx.back().buySlots(1);
+            const int tmp = ctx.buySlots(1);
             bc.KSET( tmp, (ptrdiff_t)owningMethod(), s->d_loc.packed() );
             bc.ISEQ( args+1, tmp, s->d_loc.packed() );
-            bc.JMP(ctx.back().pool.d_frameSize,1, s->d_loc.packed() );
+            bc.JMP(ctx.pool.d_frameSize,1, s->d_loc.packed() );
             const int label2 = bc.getCurPc();
             bc.RET(args, 2,s->d_loc.packed()); // return with second argument, because this is not the method where
                                                // the non-local return was defined in
@@ -364,26 +381,26 @@ struct LjBcGen2: public Visitor
         }
 
         // otherwise just use the return value as the expression result
-        const int res = ctx.back().buySlots(1);
+        const int res = ctx.buySlots(1);
         slotStack.push_back(res);
         bc.MOV(res,args,s->d_loc.packed());
-        ctx.back().sellSlots(args, s->d_args.size() + 2);
+        ctx.sellSlots(args, s->d_args.size() + 2);
     }
 
     virtual void visit( Return* r )
     {
         r->d_what->accept(this);
         // the result is in slotStack.back()
-        if( ctx.back().block && r->d_nonLocalIfInlined )
+        if( block && r->d_nonLocalIfInlined )
         {
             // Block Level
             // an explicit return in a block is always a non-local return
-            const int slot = ctx.back().buySlots(2);
+            const int slot = ctx.buySlots(2);
             bc.MOV(slot,slotStack.back(),r->d_loc.packed());
             // use the AST address of the Method as id (RISK: 64 bit architectures)
             bc.KSET(slot+1, (ptrdiff_t)owningMethod(), r->d_loc.packed() );
             bc.RET( slot, 2, r->d_loc.packed() );
-            ctx.back().sellSlots(slot,2);
+            ctx.sellSlots(slot,2);
         }else
         {
             // Method Level
@@ -413,25 +430,25 @@ struct LjBcGen2: public Visitor
                     bc.TSETi( slotStack.back(), _self, index, a->d_loc.packed() ); // self == slot(0)
                 else
                 {
-                    int tmp = ctx.back().buySlots(1);
+                    int tmp = ctx.buySlots(1);
                     bc.KSET( tmp, quint32(index), a->d_loc.packed() );
                     bc.TSET( slotStack.back(), _self, tmp, a->d_loc.packed() ); // self == slot(0)
-                    ctx.back().sellSlots(tmp);
+                    ctx.sellSlots(tmp);
                 }
 
-                ctx.back().sellSlots(_self);
+                ctx.sellSlots(_self);
             }
             break;
         case Variable::Argument:
         case Variable::Temporary:
             // either local or outer value
-            if( !blocks.isEmpty() && lhs->d_inlinedOwner != blocks.back()->d_func.data() )
+            if( !( block == 0 ) && lhs->d_inlinedOwner != block->d_func.data() )
             {
-                const int tmp = ctx.back().buySlots(1);
+                const int tmp = ctx.buySlots(1);
                 getOuterParamTable( tmp, lhs, a->d_loc );
                 Q_ASSERT( lhs->d_slot <= 255 );
                 bc.TSETi( slotStack.back(), tmp, lhs->d_slot, a->d_loc.packed() );
-                ctx.back().sellSlots(tmp);
+                ctx.sellSlots(tmp);
             }else
             {
                 bc.TSETi( slotStack.back(), 0, lhs->d_slot, a->d_loc.packed() );
@@ -444,21 +461,23 @@ struct LjBcGen2: public Visitor
         // the rhs result is still in slotStack.back() and stays there as the result of the assignment expression
     }
 
-    void emitBlock( Block* b )
+    void emitBlock()
     {
-        Q_ASSERT( blocks.isEmpty() && ctx.isEmpty() ); // this is a top-level call like visit(Method*)
+        Q_ASSERT( meth != 0 && block != 0 );
+        Block* b = block;
 
-        blocks.push_back(b);
-        ctx.push_back( Ctx(b->d_func.data(),b) );
-        const int id = bc.openFunction( 1, // only one param: self pointing to param array
+        const int id = bc.openFunction( b->d_func->getParamCount() + 1, // +1 because of self which is always slot(0)
                         b->d_loc.d_source.toUtf8(), b->d_func->d_loc.packed(), b->d_func->d_end.packed() );
         Q_ASSERT( id >= 0 );
 
-        ctx.back().buySlots( 1 ); // because of self param array
         for( int i = 0; i < b->d_func->d_vars.size(); i++ )
-            Q_ASSERT( b->d_func->d_vars[i]->d_slot == i+1 ); // preset in ObjectManager
+            Q_ASSERT( b->d_func->d_vars[i]->d_slot == i+1 ); // this was preset in ObjectManager, don't touch it here
         for( int i = 0; i < b->d_func->d_inlineds.size(); i++ )
             b->d_func->d_inlineds[i]->d_slot = i+b->d_func->d_vars.size()+1;
+
+        // TODO: only do this when block is upvalue source; use slots otherwise
+        createParamArray( b->d_func.data() );
+        // slot 0 is now the param array and the other param slots are freed
 
         for( int i = 0; i < b->d_func->d_body.size(); i++ )
         {
@@ -468,63 +487,79 @@ struct LjBcGen2: public Visitor
                 // if last return is missing, add it and return last expression result
                 bc.RET( slotStack.back(),1,b->d_func->d_end.packed());
             }
-            ctx.back().sellSlots(slotStack.back());
+            ctx.sellSlots(slotStack.back());
             slotStack.pop_back();
         }
 
         if( b->d_func->d_body.isEmpty() )
         {
-            const int tmp = ctx.back().buySlots(1);
+            const int tmp = ctx.buySlots(1);
             bc.KNIL(tmp,1,b->d_loc.packed());
             bc.RET(tmp,1,b->d_func->d_end.packed()); // return nil (TODO: check)
-            ctx.back().sellSlots(tmp);
+            ctx.sellSlots(tmp);
         }
 
-        bc.setUpvals( getUpvals() );
-        bc.closeFunction(ctx.back().pool.d_frameSize);
-        ctx.pop_back();
-        blocks.pop_back();
+        bc.setUpvals( getUpvals() ); // only for Block functions
+        bc.closeFunction(ctx.pool.d_frameSize);
 
         bc.FNEW( b->d_func->d_slot, id, b->d_loc.packed() );
     }
 
-    virtual void visit( Block* b )
+    virtual void visit( Block* blockNode )
     {
         // assumes that the block function was already allocated on module level
-        blocks.push_back(b);
-        const int btbl = ctx.back().buySlots(1);
-        slotStack.push_back(btbl);
+
+        const int blockInst = ctx.buySlots(1);
+        slotStack.push_back(blockInst);
         // return a table which carries the function
 
-        const int func = ctx.back().buySlots(1);
-        const int id = ctx.back().getUpvalNr(b->d_func.data());
-        bc.UGET(func, id, b->d_loc.packed() );
+        const int blockFunc = ctx.buySlots(1);
+        const int id = ctx.getUpvalNr(blockNode->d_func.data());
+        bc.UGET( blockFunc, id, blockNode->d_loc.packed() );
 
-        // slot 0 is the param array of the function where this Block literal is spotted; it is the outer
-        // param array of the one created here
+        // here we create the Block instance and associate it with the pre-existing block function.
+        bc.TNEW( blockInst, blockNode->d_func->d_inlinedLevel, 0, blockNode->d_loc.packed() );
+        bc.TSET( blockFunc, blockInst,"_f", blockNode->d_loc.packed());
 
-        // table is also used as param array; number of pars incl. self plus locals plus outer tables
-        bc.TNEW(btbl,paramTableSize(b->d_func.data()) + b->d_func->d_inlinedLevel, 0, b->d_loc.packed() );
-            // slot 0 in this param array is not used
-        bc.TSET(func,btbl,"_f",b->d_loc.packed());
-        // layout: nil, var0,..,varN-1, outer(1), outer(2), ...
-        bc.TSETi( 0, btbl, paramTableSize(b->d_func.data()),b->d_loc.packed() ); // set outer(1)
-        const int tmp = ctx.back().buySlots(1);
-        for( int i = 1; i < b->d_func->d_inlinedLevel; i++ )
+        // Block instance is also used to carry environment param tables
+        // layout: index0: outer(inlinelevel0), index1: outer(inlinelevel1), ...
+
+        // slot 0 is the param array of this function (method or block) where this Block literal is spotted.
+        if( ( block == 0 ) )
         {
-            // copy the remaining outer param tables
-            bc.TGETi(tmp, 0, paramTableSize(b->d_func.data()) + i - 1, b->d_loc.packed() );
-            bc.TSETi( tmp, btbl, paramTableSize(b->d_func.data()) + i, b->d_loc.packed() ); // set outer(2)...
+            Q_ASSERT( blockNode->d_func->d_inlinedLevel == 1 );
+            // we're on method level
+            // param array of this method is in slot 0
+            bc.TSETi( 0, blockInst, 0, blockNode->d_loc.packed() );
+        }else
+        {
+            Q_ASSERT( blockNode->d_func->d_inlinedLevel > 1 );
+            // we're on block level
+            // block instance is at index 0 or the param array in slot 0
+            const int outerBlockInst = ctx.buySlots(1);
+            bc.TGETi( outerBlockInst, 0, 0, blockNode->d_loc.packed() );
+            const int tmp = ctx.buySlots(1);
+            for( int i = 0; i < blockNode->d_func->d_inlinedLevel - 1; i++ )
+            {
+                // copy the remaining outer param tables
+                bc.TGETi(tmp, outerBlockInst, i, blockNode->d_loc.packed() );
+                bc.TSETi( tmp, blockInst, i, blockNode->d_loc.packed() );
+            }
+            // param array of this block is in slot 0
+            bc.TSETi( 0, blockInst, blockNode->d_func->d_inlinedLevel - 1, blockNode->d_loc.packed() );
+
+            ctx.sellSlots(tmp);
+            ctx.sellSlots(outerBlockInst);
         }
-        ctx.back().sellSlots(tmp);
-        ctx.back().sellSlots(func);
-        emitSetmetatable( btbl, "Block", b->d_loc );
-        blocks.pop_back();
+
+        ctx.sellSlots(blockFunc);
+
+        emitSetmetatable( blockInst, "Block", blockNode->d_loc );
     }
 
     virtual void visit( ArrayLiteral* a )
     {
-        const int res = ctx.back().buySlots(1);
+        const int res = ctx.buySlots(1);
         slotStack.push_back(res);
         bc.TNEW(res,0,0,a->d_loc.packed());
         emitSetmetatable( res, "Array", a->d_loc );
@@ -536,36 +571,36 @@ struct LjBcGen2: public Visitor
                 bc.TSETi( slotStack.back(), res, i+1, a->d_elements[i]->d_loc.packed() );
             else
             {
-                int tmp = ctx.back().buySlots(1);
+                int tmp = ctx.buySlots(1);
                 bc.KSET( tmp, quint32(i+1), a->d_loc.packed() );
                 bc.TSET( slotStack.back(), 0, tmp, a->d_loc.packed() );
-                ctx.back().sellSlots(tmp);
+                ctx.sellSlots(tmp);
             }
-            ctx.back().sellSlots(slotStack.back());
+            ctx.sellSlots(slotStack.back());
             slotStack.pop_back();
         }
     }
 
     void emitSetmetatable( int t, const QByteArray& cls, const Loc& loc )
     {
-        const int args = ctx.back().buySlots(3,true);
+        const int args = ctx.buySlots(3,true);
         bc.GGET(args,"setmetatable",loc.packed() );
         bc.MOV(args+1,t,loc.packed());
         bc.GGET(args+2,cls,loc.packed());
         bc.TGET(args+2,args+2,"_class",loc.packed());
         bc.CALL(args,0,2,loc.packed());
-        ctx.back().sellSlots(args,3);
+        ctx.sellSlots(args,3);
     }
 
     void emitString( const QByteArray& string, const QByteArray& cls, const Loc& loc )
     {
-        const int str = ctx.back().buySlots(1);
+        const int str = ctx.buySlots(1);
         bc.KSET(str, LuaTranspiler::escape(string), loc.packed() );
-        const int res = ctx.back().buySlots(1);
+        const int res = ctx.buySlots(1);
         slotStack.push_back(res);
         bc.TNEW(res,0,0,loc.packed());
         bc.TSET(str,res,"_str",loc.packed());
-        ctx.back().sellSlots(str);
+        ctx.sellSlots(str);
         emitSetmetatable( res, cls, loc );
     }
 
@@ -587,18 +622,18 @@ struct LjBcGen2: public Visitor
 
     virtual void visit( Number* n )
     {
-        const int res = ctx.back().buySlots(1);
+        const int res = ctx.buySlots(1);
         slotStack.push_back(res);
         if( n->d_real )
         {
-            const int dbl = ctx.back().buySlots(1);
+            const int dbl = ctx.buySlots(1);
             bool ok;
             bc.KSET(dbl, n->toNumber(&ok), n->d_loc.packed() );
             if( !ok )
                 error(n->d_loc, QString("invalid real %1").arg(n->d_num.constData()) );
             bc.TNEW(res,0,0,n->d_loc.packed());
             bc.TSET(dbl,res,"_dbl",n->d_loc.packed());
-            ctx.back().sellSlots(dbl);
+            ctx.sellSlots(dbl);
             emitSetmetatable( res, "Double", n->d_loc );
         }else
         {
@@ -611,33 +646,39 @@ struct LjBcGen2: public Visitor
 
     int selfToSlot( const Loc& loc )
     {
-        const int _self = ctx.back().buySlots(1);
-        if( blocks.isEmpty() )
+        const int self = ctx.buySlots(1);
+        // slot 0 is parameter array for both methods and block functions
+        bc.TGETi( self, 0, 0, loc.packed() );
+        if( ( block == 0 ) )
         {
-            // we are on method level
-            bc.TGETi( _self, 0, 0, loc.packed() );
+            // we are on method level; self is already propperly fetched
         }else
         {
-            // we are on block level
-            Function* f = blocks.back()->d_func.data();
-            const int off = f->d_inlinedLevel - 1;
-            bc.TGETi( _self, 0, paramTableSize(f) + off, loc.packed() ); // get the params table of the method
-            bc.TGETi( _self, _self, 0, loc.packed() ); // get the self slot of the method params table
+            // we are on block level; self currently points to the current block instance
+            // self is also used as a temporary here
+            // the params table of the method level is at index 0 of the block instance
+            bc.TGETi( self, self, 0, loc.packed() );
+            // the method level self is at index 0 of the method params table
+            bc.TGETi( self, self, 0, loc.packed() );
         }
-        return _self;
+        return self;
     }
 
     void getOuterParamTable( quint8 to, Variable* v, const Loc& loc )
     {
-        Q_ASSERT( !blocks.isEmpty() );
-        Function* f = blocks.back()->d_func.data();
-        const int off = f->d_inlinedLevel - v->d_inlinedOwner->d_inlinedLevel - 1;
-        bc.TGETi( to, 0, paramTableSize(f) + off, loc.packed() );
+        Q_ASSERT( !( block == 0 ) && v->d_inlinedOwner != block->d_func.data() );
+        // we're on block level
+
+        bc.TGETi( to, 0, 0, loc.packed() );
+        // "to" now contains the Block instance
+
+        bc.TGETi( to, to, v->d_inlinedOwner->d_inlinedLevel, loc.packed() );
+        // to now contains the param table
     }
 
     virtual void visit( Ident* id )
     {
-        const int res = ctx.back().buySlots(1);
+        const int res = ctx.buySlots(1);
         slotStack.push_back( res );
         if( id->d_resolved )
         {
@@ -661,19 +702,19 @@ struct LjBcGen2: public Visitor
                                 bc.TGETi( res, _self, index, id->d_loc.packed() );
                             else
                             {
-                                int tmp = ctx.back().buySlots(1);
+                                int tmp = ctx.buySlots(1);
                                 bc.KSET( tmp, quint16(index), id->d_loc.packed() );
                                 bc.TGET( res, _self, tmp, id->d_loc.packed() );
-                                ctx.back().sellSlots(tmp);
+                                ctx.sellSlots(tmp);
                             }
 
-                            ctx.back().sellSlots(_self);
+                            ctx.sellSlots(_self);
                         }
                         break;
                     case Variable::Argument:
                     case Variable::Temporary:
                         // either local or outer value
-                        if( !blocks.isEmpty() && v->d_inlinedOwner != blocks.back()->d_func.data() )
+                        if( !( block == 0 ) && v->d_inlinedOwner != block->d_func.data() )
                         {
                             getOuterParamTable( res, v, id->d_loc );
                             Q_ASSERT( v->d_slot <= 255 );
@@ -707,7 +748,7 @@ struct LjBcGen2: public Visitor
                 bc.KSET(res,false,id->d_loc.packed());
                 break;
             case Expression::_self:
-                Q_ASSERT( ctx.back().block == 0 );
+                Q_ASSERT( block == 0 );
                 bc.TGETi( res, 0, 0, id->d_loc.packed() );
                 break;
             default:
@@ -727,16 +768,15 @@ bool LjbcCompiler2::translate(Lua::JitComposer& bc, Ast::Method* m)
 {
     Q_ASSERT( m && m->d_owner && m->d_owner->getTag() == Ast::Thing::T_Class );
     Ast::Class* c = static_cast<Ast::Class*>( m->d_owner );
-    LjBcGen2 v(bc,m);
-    m->accept(&v);
+    LjBcGen2 gen(bc,m, 0);
+    gen.emitMethod();
     return false;
 }
 
 bool LjbcCompiler2::translate(Lua::JitComposer& bc, Method* m, Block* b)
 {
     Q_ASSERT( m && m->d_owner && m->d_owner->getTag() == Ast::Thing::T_Class );
-    LjBcGen2 gen(bc, m);
-
-    gen.emitBlock(b);
+    LjBcGen2 gen(bc, m, b);
+    gen.emitBlock();
     return true;
 }

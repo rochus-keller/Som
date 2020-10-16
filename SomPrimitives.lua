@@ -610,15 +610,12 @@ module.Block1.value = module.Block.value
 
 function module.Block.value_(self,argument)
 	-- self[0] not used
-	self[1] = argument
 	return self:_f(argument) 
 end
 module.Block["value:"] = module.Block.value_
 
 function module.Block.value_with_(self,arg1,arg2)
 	-- self[0] not used
-	self[1] = arg1
-	self[2] = arg2
 	return self:_f(arg1,arg2) 
 end
 module.Block["value:with:"] = module.Block.value_with_
