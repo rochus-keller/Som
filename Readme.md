@@ -95,7 +95,8 @@ SOM++ copying collector | 206'990 | 7.9
 SOM++ mark-sweep | 111'867 | 4.3
 LjSOM -nojit | 32'389 | 1.2
 LjSOM 0.7.2 | 26'140 | 1
-Plain Lua/LuaJIT | 1'092 | 0.042 (times 24 speed-up)
+LjSOM 0.8 | (8'713, estimate) | (0.3, estimate) 
+Plain Lua/LuaJIT | 1'092 | 0.042 (factor 8 to LjSOM 0.8)
 
 *Note: CSOM wasn't able to run Json (run out of lexer reading buffer space) and Havlak (not enough heap), so the overall comparison makes no sense; the provided values only represent the subset.
 
