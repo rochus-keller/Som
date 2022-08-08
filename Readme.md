@@ -6,7 +6,7 @@ I recently implemented two versions of the Smalltalk-80 Bluebook interpreter (on
 
 Interim conclusion September 2020: I have implemented a SOM to Lua transpiler and a SOM to LuaJIT bytecode compiler with different optimizations/attempts. My experiments have shown that the runtimes with and without JIT switched on differ only marginally. Especially the are-we-fast-yet benchmark suite has shown that hand-crafted Lua code runs 24 times faster than the LuaJIT bytecode generated from the SOM source code. The primary reason is that the Tracing JIT compiler of LuaJIT does not support instantiation of closures, but Smalltalk and SOM require closures for almost any purpose. I therefore have reached the limits of the current versions of LuaJIT. See [here](#a-som-to-luajit-bytecode-compiler-and-debugger) for more information. To work around this limitation LuaJIT closures have to be avoided (i.e. replaced by alternative implementations).
 
-Final conclusion December 2020: after implementing a work-around for closures and conducting more measurements I conclude that even with JIT support for closures the SOM version of the benchmark would still run more than factor 7 slower than the corresponding plain Lua implementation. Pharo 7 in comparison runs about 20% faster (factor 1.2) than the plain Lua implementation, see [this report](http://software.rochus-keller.info/are-we-fast-yet_crystal_lua_node_som_pharo_i386_results_2020-12-29.pdf) and [this section](#concluding-experiments). From this I conclude that another speed-up can only be achieved when applying similar optimizations on bytecode and VM level as done in [Cog/Spur](https://www.researchgate.net/publication/328509577_Two_Decades_of_Smalltalk_VM_Development_Live_VM_Development_through_Simulation_Tools).
+Final conclusion December 2020: after implementing a work-around for closures and conducting more measurements I conclude that even with JIT support for closures the SOM version of the benchmark would still run more than factor 7 slower than the corresponding plain Lua implementation. Pharo 7 in comparison runs about 20% faster (factor 1.2) than the plain Lua implementation, see [this report](http://software.rochus-keller.ch/are-we-fast-yet_crystal_lua_node_som_pharo_i386_results_2020-12-29.pdf) and [this section](#concluding-experiments). From this I conclude that another speed-up can only be achieved when applying similar optimizations on bytecode and VM level as done in [Cog/Spur](https://www.researchgate.net/publication/328509577_Two_Decades_of_Smalltalk_VM_Development_Live_VM_Development_through_Simulation_Tools).
 
 ### A SOM parser and code model written in C++
 
@@ -28,7 +28,7 @@ The Class Browser is essentially the same as the https://github.com/rochus-kelle
 
 Here is a screenshot:
 
-![Overview](http://software.rochus-keller.info/screenshot_som_classbrowser_0.1.png)
+![Overview](http://software.rochus-keller.ch/screenshot_som_classbrowser_0.1.png)
 
 ### A SOM to Lua transpiler with LuaJIT based VM
 
@@ -63,7 +63,7 @@ The VM includes my Lua IDE (see https://github.com/rochus-keller/LjTools#lua-par
 
 Here is a screenshot:
 
-![Overview](http://software.rochus-keller.info/screenshot_som_lua_vm_ide_0.1)
+![Overview](http://software.rochus-keller.ch/screenshot_som_lua_vm_ide_0.1)
 
 ### A SOM to LuaJIT bytecode compiler and debugger
 
@@ -86,7 +86,7 @@ The VM includes my bytecode debugger (see https://github.com/rochus-keller/LjToo
 
 Here is a screenshot:
 
-![LuaJIT Bytecode Debugger Screenshot](http://software.rochus-keller.info/screenshot_luajit_bytecode_debugger_v0.1.png)
+![LuaJIT Bytecode Debugger Screenshot](http://software.rochus-keller.ch/screenshot_luajit_bytecode_debugger_v0.1.png)
 
 There is also a commandline version of the virtual machine called LjSOM. It supports both the Lua transpiler and LuaJIT bytecode compiler described above. LjSOM is easier to integrate in a performance measurement setup like https://github.com/smarr/are-we-fast-yet. Of the 14 benchmarks 12 already work (note that CD neither works on SOM++); the remaining two are DeltaBlue and CD and are further investigated. I was able to run the 12 benchmarks on LjSOM, SOM++ and CSOM on my test machine (see above) using run_are-we-fast-yet.sh (see Results folder). The results are documented in Are-we-fast-yet_Results.ods; here is a summary table:
 
@@ -104,18 +104,18 @@ Plain Lua/LuaJIT | 1'092 | 0.042 (factor 12 to LjSOM 0.8)
 
 Note that CSOM and SOM++ with copying collector were built with default settings (i.e. just cloned the Github repository and run the build script). I assume these were the versions used to obtain the measurement results presented on http://som-st.github.io/. Since I didn't use the same number of iterations as suggested in rebench.conf of https://github.com/smarr/are-we-fast-yet I use the geometric mean of the 12 benchmark averages for comparison (as it is e.g. recommended by The Computer Language Benchmarks Game).
 
-Concerning the present LuaJIT performance it has to be noted that with the current implementation of my bytecode compiler Blocks are represented by closures (unless inlined) and each run potentially requires a closure instantiation (FNEW bytecode) which is not supported by the current version of the LuaJIT tracing compiler (NYI). It is therefore not surprising that the JIT has only a minimal influence (factor 0.1 to 0.2). The version of the benchmark written in Lua performs much better, with a speedup factor of 24 (see Results/Are-we-fast-yet_Results.ods). Here is a log recorded with LjSOM running Benchmarks/All.som: [LjSOM_0.7.3_Benchmarks_All_trace_log.pdf](http://software.rochus-keller.info/LjSOM_0.7.3_Benchmarks_All_trace_log.pdf). Bytecode 48 (n=227) is UCLO and bytecode 49 (n=251) is FNEW, both required to instantiate closures. Of the 892 attempts of the JIT tracer 767 failed; 493 of which directly because of the not supported bytecodes, and 185 because of re-attempting blacklisted traces. I will next try to take FNEW and UCLO out of loops as far as possible.
+Concerning the present LuaJIT performance it has to be noted that with the current implementation of my bytecode compiler Blocks are represented by closures (unless inlined) and each run potentially requires a closure instantiation (FNEW bytecode) which is not supported by the current version of the LuaJIT tracing compiler (NYI). It is therefore not surprising that the JIT has only a minimal influence (factor 0.1 to 0.2). The version of the benchmark written in Lua performs much better, with a speedup factor of 24 (see Results/Are-we-fast-yet_Results.ods). Here is a log recorded with LjSOM running Benchmarks/All.som: [LjSOM_0.7.3_Benchmarks_All_trace_log.pdf](http://software.rochus-keller.ch/LjSOM_0.7.3_Benchmarks_All_trace_log.pdf). Bytecode 48 (n=227) is UCLO and bytecode 49 (n=251) is FNEW, both required to instantiate closures. Of the 892 attempts of the JIT tracer 767 failed; 493 of which directly because of the not supported bytecodes, and 185 because of re-attempting blacklisted traces. I will next try to take FNEW and UCLO out of loops as far as possible.
 
-I instrumented the code to find out whether I could take out FNEW from loops and move it to superordinate functions (method or module level). The results of this analysis are in [LjSOM_0.7.3_Benchmarks_All_FNEW_optimization_analysis.ods](http://software.rochus-keller.info/LjSOM_0.7.3_Benchmarks_All_FNEW_optimization_analysis.ods). The Benchmarks code includes 198 Block literals of which 129 can be inlined; only 14 can be relocated to a higher level; in only 3 of these FNEW is called in a loop, and only one seems to be performance relevant; from that I concluded that modifying the bytecode generator is not worth the effort.
+I instrumented the code to find out whether I could take out FNEW from loops and move it to superordinate functions (method or module level). The results of this analysis are in [LjSOM_0.7.3_Benchmarks_All_FNEW_optimization_analysis.ods](http://software.rochus-keller.ch/LjSOM_0.7.3_Benchmarks_All_FNEW_optimization_analysis.ods). The Benchmarks code includes 198 Block literals of which 129 can be inlined; only 14 can be relocated to a higher level; in only 3 of these FNEW is called in a loop, and only one seems to be performance relevant; from that I concluded that modifying the bytecode generator is not worth the effort.
 
 #### Concluding experiments
 
-So I have reached the limits of the current versions of LuaJIT with closures. I therefore implemented yet another bytecode generator which replaces closures by normal functions with concatenated tables which represent arguments and locals; the generator is still work in progress, but the benchmarks which already work show a speed-up between a factor two and three (geomean) compared to the previous version. Examples/Benchmarks and TestSuite work with the closure based code generator with a speed-up factor three. The are-we-fast-yet suite only partially works (Richards, Json and Havlak give errors) with a speed-up factor two. See Results/Benchmarks_All_Results.ods and [this report](http://software.rochus-keller.info/are-we-fast-yet_crystal_lua_node_som_pharo_i386_results_2020-12-29.pdf). Since the Examples/Benchmarks results based on the FNEW closures are nearly the same with and without JIT (i.e. we mostly run in the interpreter), this is a good reason to assume that in case of closure support by the tracing JIT the result would be about factor 4 faster (as observed in http://luajit.org/performance_x86.html between interpreter and JIT mode); our closure substitute is therefore quite close already, i.e. even with JIT support for closures the SOM version of the benchmark would still run more than factor 7 slower than the corresponding Lua implementation, or the current Smalltalk implementations based on Cog/Spur.
+So I have reached the limits of the current versions of LuaJIT with closures. I therefore implemented yet another bytecode generator which replaces closures by normal functions with concatenated tables which represent arguments and locals; the generator is still work in progress, but the benchmarks which already work show a speed-up between a factor two and three (geomean) compared to the previous version. Examples/Benchmarks and TestSuite work with the closure based code generator with a speed-up factor three. The are-we-fast-yet suite only partially works (Richards, Json and Havlak give errors) with a speed-up factor two. See Results/Benchmarks_All_Results.ods and [this report](http://software.rochus-keller.ch/are-we-fast-yet_crystal_lua_node_som_pharo_i386_results_2020-12-29.pdf). Since the Examples/Benchmarks results based on the FNEW closures are nearly the same with and without JIT (i.e. we mostly run in the interpreter), this is a good reason to assume that in case of closure support by the tracing JIT the result would be about factor 4 faster (as observed in http://luajit.org/performance_x86.html between interpreter and JIT mode); our closure substitute is therefore quite close already, i.e. even with JIT support for closures the SOM version of the benchmark would still run more than factor 7 slower than the corresponding Lua implementation, or the current Smalltalk implementations based on Cog/Spur.
 
 
 ### Binary versions
 
-Here is a binary version of the class browser and the virtual machine for Windows: http://software.rochus-keller.info/Som_win32.zip.
+Here is a binary version of the class browser and the virtual machine for Windows: http://software.rochus-keller.ch/Som_win32.zip.
 Just unpack the ZIP somewhere on your drive and double-click SomClassBrowser.exe or one of the batch files; Qt libraries are included as well as the SOM Benchmarks example.
 
 ### Build Steps
